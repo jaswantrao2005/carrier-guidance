@@ -1,7 +1,7 @@
 const Groq = require("groq-sdk");
 
 // Use the versatile model as requested
-const GROQ_MODEL = "llama-3.1-70b-versatile";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 /**
  * Generates a chatbot response using Groq, giving it context of the user's resume.

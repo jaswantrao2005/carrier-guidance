@@ -30,7 +30,7 @@ export default function LoginPage() {
         login(response.data.token, response.data.user);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to login. Please try again.');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to login. Please try again.');
     } finally {
       setIsLoading(false);
     }
