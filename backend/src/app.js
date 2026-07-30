@@ -5,6 +5,7 @@ require('dotenv').config();
 const healthRoutes = require('./routes/health.routes');
 const authRoutes = require('./routes/auth.routes');
 const resumeRoutes = require('./routes/resume/resume.routes');
+const chatRoutes = require('./routes/chat.routes');
 const errorHandler = require('./middlewares/error.middleware');
 
 const app = express();
@@ -18,10 +19,11 @@ app.get('/', (req, res) => {
   res.send('Backend is running');
 });
 
-// Health route
+// Routes
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/resume', resumeRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

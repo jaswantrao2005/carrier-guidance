@@ -9,6 +9,7 @@ import apiClient from '@/features/api/client';
 import { ATSGauge } from '@/components/ui/ATSGauge';
 import { SkillTag } from '@/components/ui/SkillTag';
 import { Button } from '@/components/ui/Button';
+import { RoadmapChatbot } from '@/components/ui/RoadmapChatbot';
 import { FileText, Calendar, ArrowRight, Loader2, Plus } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -162,26 +163,37 @@ export default function DashboardPage() {
                 </div>
               </motion.div>
 
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm"
-              >
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 font-heading">
-                  AI Recommended Roles
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {latestResume.analysis.careerRoles.map((role: string, i: number) => (
-                    <div key={i} className="flex items-center p-4 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 shadow-sm">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center mr-4 shrink-0">
-                        <ArrowRight className="w-5 h-5" />
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full"
+                >
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 font-heading">
+                    AI Recommended Roles
+                  </h2>
+                  <div className="grid grid-cols-1 gap-4 flex-1">
+                    {latestResume.analysis.careerRoles.map((role: string, i: number) => (
+                      <div key={i} className="flex items-center p-4 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center mr-4 shrink-0">
+                          <ArrowRight className="w-5 h-5" />
+                        </div>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{role}</span>
                       </div>
-                      <span className="font-medium text-slate-800 dark:text-slate-200">{role}</span>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="h-[500px]"
+                >
+                  <RoadmapChatbot resumeContext={latestResume.analysis} />
+                </motion.div>
+              </div>
             </div>
 
             {/* Right Column: History */}
