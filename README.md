@@ -10,6 +10,7 @@ The platform combines a beautiful, glassmorphism frontend experience with a robu
 - **Resume Upload**: A seamless drag-and-drop file upload zone that validates and securely transmits PDF files.
 - **AI-Powered Analysis**: The backend parses PDF text and interfaces with **Google Gemini AI** to extract skills, evaluate ATS scores, and recommend tailored career paths.
 - **Career Dashboard**: A dynamic user dashboard displaying visual ATS score gauges, categorized skill tags (Technical, Soft, Missing), and role recommendations.
+- **AI Career Mentor Chatbot**: An intelligent, context-aware chatbot powered by **Groq** that uses the user's latest resume analysis to generate personalized, step-by-step roadmaps for their dream role.
 - **History Tracking**: Users can view their past resume uploads and track their career growth over time.
 
 ---
@@ -30,18 +31,18 @@ AI-Career-Guidance-Platform/
 ├── backend/
 │   ├── src/
 │   │   ├── config/       # Database & Environment config
-│   │   ├── controllers/  # Route logic
+│   │   ├── controllers/  # Route logic (auth, resume, chat)
 │   │   ├── middlewares/  # JWT Auth & Multer upload handling
 │   │   ├── models/       # Mongoose schemas (User, Resume)
-│   │   ├── routes/       # API endpoints
-│   │   ├── services/     # Gemini AI & PDF Parsing logic
+│   │   ├── routes/       # API endpoints (auth, resume, chat)
+│   │   ├── services/     # Gemini AI (Resume Parsing) & Groq AI (Chatbot)
 │   │   ├── app.js
 │   │   └── server.js
 │   └── uploads/resumes/  # Local temporary file storage
 ├── frontend/
 │   ├── src/
 │   │   ├── app/          # Next.js App Router (Pages, Layouts)
-│   │   ├── components/   # Reusable UI components (Button, Input, ATSGauge, FileUpload)
+│   │   ├── components/   # Reusable UI components (Button, Input, ATSGauge, FileUpload, RoadmapChatbot)
 │   │   └── features/     # API Client (Axios) & AuthContext
 │   ├── tailwind.config.ts
 │   └── tsconfig.json
@@ -61,6 +62,7 @@ AI-Career-Guidance-Platform/
   - **ATS Score Gauge**: An animated, color-coded SVG circular progress bar.
   - **Skills Gap Analysis**: Categorized tags highlighting Technical Skills, Soft Skills, and Missing Growth Areas.
   - **Role Matching**: Sleek cards outlining AI-recommended career trajectories.
+  - **AI Career Mentor Chatbot**: A dynamic chat interface that automatically pulls in your resume context to answer questions and build custom learning roadmaps for your target roles.
   - **Resume History**: A sidebar listing past resume uploads, linking to detailed historical views (`/dashboard/resume/[id]`).
 
 ### 2. The Backend Engine (Node.js + Express)
@@ -89,7 +91,7 @@ AI-Career-Guidance-Platform/
 - **Database**: MongoDB with Mongoose
 - **Authentication**: JSON Web Tokens (JWT) & bcrypt
 - **File Uploads**: Multer
-- **AI Integration**: `@google/generative-ai` (Gemini API)
+- **AI Integration**: `@google/generative-ai` (Gemini API for analysis) & `groq-sdk` (Llama models for chatbot)
 - **PDF Parsing**: `pdf-parse-new`
 
 ---
@@ -120,6 +122,7 @@ PORT=5000
 MONGO_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret
 GEMINI_API_KEY=your_google_gemini_api_key
+GROQ_API_KEY=your_groq_api_key
 ```
 
 **Frontend (`frontend/.env.local`)**:
