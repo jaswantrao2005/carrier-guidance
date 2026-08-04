@@ -1,8 +1,10 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
-const genAI = process.env.GEMINI_API_KEY
-  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const groq = process.env.GROQ_API_KEY
+  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null;
+
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 function normalizeAnalysisPayload(payload) {
   if (!payload || typeof payload !== "object") {
@@ -51,38 +53,28 @@ function normalizeAnalysisPayload(payload) {
   };
 }
 
-function parseGeminiResponse(text) {
-  if (!text) {
-    return null;
-  }
-
+function parseGroqResponse(text) {
+  if (!text) return null;
   const cleaned = String(text).replace(/```json|```/g, "").trim();
-
   try {
     const match = cleaned.match(/\{[\s\S]*\}/);
     if (match) {
       return JSON.parse(match[0]);
     }
   } catch (error) {
-    console.warn("Unable to parse Gemini response as JSON:", error.message);
+    console.warn("Unable to parse Groq response as JSON:", error.message);
   }
-
   return null;
 }
 
 async function analyzeResume(resumeText) {
   try {
-    if (!genAI) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    if (!groq) {
+      throw new Error("GROQ_API_KEY is not configured");
     }
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-    });
-
+    const systemPrompt = "You are an expert AI Career Advisor.";
     const prompt = `
-You are an expert AI Career Advisor.
-
 Analyze the following resume and return valid JSON only with these exact keys:
 {
   "candidateSummary": "string",
@@ -101,14 +93,23 @@ Resume:
 ${resumeText}
 `;
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    const parsedResponse = parseGeminiResponse(responseText);
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt }
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.2,
+      response_format: { type: "json_object" }
+    });
+
+    const responseText = chatCompletion.choices[0]?.message?.content;
+    const parsedResponse = parseGroqResponse(responseText);
 
     return normalizeAnalysisPayload(parsedResponse || responseText);
   } catch (error) {
-    console.error(error);
-    throw new Error("Failed to analyze resume with Gemini");
+    console.error("analyzeResume Error:", error);
+    throw new Error("Failed to analyze resume with Groq");
   }
 }
 

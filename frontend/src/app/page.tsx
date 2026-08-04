@@ -201,6 +201,7 @@ export default function LandingPage() {
                   {[
                     { title: "Deep Context Parsing", desc: "Extracts technical skills, soft skills, and missing competencies automatically." },
                     { title: "Tailored Growth Roadmaps", desc: "Ask the built-in AI mentor how to achieve any dream role (Data Scientist, AI Engineer, PM)." },
+                    { title: "AI Voice Mock Interview", desc: "Practice realistic voice-based mock interviews with adaptive questions and detailed performance coaching reports." },
                     { title: "ATS Optimization Engine", desc: "Ensures your resume passes corporate automated screeners with flying colors." }
                   ].map((item, idx) => (
                     <motion.div 

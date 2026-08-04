@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { BrainCircuit, LogOut, LayoutDashboard, UploadCloud } from 'lucide-react';
+import { BrainCircuit, LogOut, LayoutDashboard, UploadCloud, Mic } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
 
@@ -48,6 +48,18 @@ export const Navbar = () => {
               >
                 <LayoutDashboard className="w-4 h-4 mr-2" />
                 Dashboard
+              </Link>
+
+              <Link 
+                href="/mock-interview" 
+                className={`flex items-center px-3.5 py-2 text-sm font-semibold rounded-xl transition-all ${
+                  pathname.startsWith('/mock-interview') 
+                    ? 'bg-primary-500/10 text-primary-600 dark:bg-primary-500/20 dark:text-primary-300 border border-primary-500/30' 
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/80'
+                }`}
+              >
+                <Mic className="w-4 h-4 mr-2" />
+                Mock Interview
               </Link>
               
               <Link 
