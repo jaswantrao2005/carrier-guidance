@@ -9,19 +9,23 @@ interface IntroScreenProps {
 }
 
 export const IntroScreen: React.FC<IntroScreenProps> = ({ onComplete }) => {
+  const [shouldReduceMotion, setShouldReduceMotion] = React.useState(false);
+
   useEffect(() => {
-    // Total timing sequence:
-    // 0.0s - 0.8s: Icon pops in
-    // 0.2s - 1.1s: Per-character letter animation for "Career AI"
-    // 1.15s - 1.8s: Subtitle badge floats up
-    // 1.8s - 2.1s: Brief pause to appreciate full reveal
-    // 2.1s - 3.1s: Ultra-smooth slide-down curtain transition (1.0s duration)
-    // 3.1s: Unmount callback
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setShouldReduceMotion(mediaQuery.matches);
+    const listener = (e: MediaQueryListEvent) => setShouldReduceMotion(e.matches);
+    mediaQuery.addEventListener('change', listener);
+
+    // Total timing sequence
     const timer = setTimeout(() => {
       onComplete();
     }, 3100);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      mediaQuery.removeEventListener('change', listener);
+    };
   }, [onComplete]);
 
   const textContainerVariants: Variants = {
@@ -29,7 +33,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onComplete }) => {
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.065,
+        staggerChildren: shouldReduceMotion ? 0 : 0.065,
         delayChildren: 0.2,
       },
     },
@@ -38,17 +42,15 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onComplete }) => {
   const letterVariants: Variants = {
     hidden: {
       opacity: 0,
-      y: 40,
-      filter: "blur(14px)",
-      scale: 0.65,
+      y: shouldReduceMotion ? 0 : 25,
+      scale: shouldReduceMotion ? 1 : 0.85,
     },
     visible: {
       opacity: 1,
       y: 0,
-      filter: "blur(0px)",
       scale: 1,
       transition: {
-        duration: 0.65,
+        duration: shouldReduceMotion ? 0.1 : 0.5,
         ease: [0.215, 0.61, 0.355, 1.0],
       },
     },
@@ -59,20 +61,23 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onComplete }) => {
 
   return (
     <motion.div
-      initial={{ y: "0%" }}
-      animate={{ y: "100%" }}
+      initial={shouldReduceMotion ? { opacity: 1 } : { y: "0%" }}
+      animate={shouldReduceMotion ? { opacity: 0 } : { y: "100%" }}
       transition={{
         delay: 2.1,
-        duration: 1.0,
-        ease: [0.83, 0, 0.17, 1], // Ultra-smooth cubic bezier easing (quintic curve)
+        duration: shouldReduceMotion ? 0.4 : 1.0,
+        ease: shouldReduceMotion ? "easeOut" : [0.83, 0, 0.17, 1],
       }}
-      style={{ willChange: "transform" }}
+      style={{ willChange: shouldReduceMotion ? "opacity" : "transform" }}
       className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 text-white overflow-hidden select-none pointer-events-auto"
     >
       {/* Ambient Glow & Lighting Effects */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] sm:w-[700px] h-[550px] sm:h-[700px] bg-gradient-to-tr from-primary-600/25 via-violet-600/30 to-indigo-600/25 rounded-full blur-[150px] pointer-events-none" />
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary-500/50 to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent" />
+      <div 
+        style={{ transform: 'translate3d(-50%, -50%, 0)', willChange: 'transform' }}
+        className="absolute top-1/2 left-1/2 w-[350px] sm:w-[600px] h-[350px] sm:h-[600px] bg-gradient-to-tr from-primary-600/20 via-violet-600/25 to-indigo-600/20 rounded-full blur-[100px] sm:blur-[140px] pointer-events-none" 
+      />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary-500/30 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-violet-500/30 to-transparent" />
 
       {/* Grid Pattern overlay for tech aesthetic */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b18_1px,transparent_1px),linear-gradient(to_bottom,#1e293b18_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />

@@ -9,7 +9,10 @@ export const HeroShowcase: React.FC = () => {
   return (
     <div className="relative w-full max-w-xl mx-auto lg:max-w-none flex items-center justify-center p-4">
       {/* Ambient Radial Glows */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[110%] h-[110%] rounded-full bg-gradient-to-tr from-primary-600/20 via-violet-600/30 to-indigo-600/20 blur-3xl pointer-events-none" />
+      <div 
+        style={{ transform: 'translate3d(-50%, -50%, 0)', willChange: 'transform' }}
+        className="absolute top-1/2 left-1/2 w-[90%] sm:w-[110%] h-[90%] sm:h-[110%] rounded-full bg-gradient-to-tr from-primary-600/10 via-violet-600/20 to-indigo-600/10 blur-[60px] sm:blur-[100px] pointer-events-none" 
+      />
 
       {/* Interactive Floating Card Frame */}
       <motion.div

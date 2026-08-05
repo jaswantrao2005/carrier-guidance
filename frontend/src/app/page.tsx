@@ -11,15 +11,23 @@ import { HeroShowcase } from '@/components/ui/HeroShowcase';
 
 export default function LandingPage() {
   const [isIntroActive, setIsIntroActive] = useState(true);
+  const [shouldReduceMotion, setShouldReduceMotion] = useState(false);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setShouldReduceMotion(mediaQuery.matches);
+    const listener = (e: MediaQueryListEvent) => setShouldReduceMotion(e.matches);
+    mediaQuery.addEventListener('change', listener);
+
     if (isIntroActive) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
+
     return () => {
       document.body.style.overflow = '';
+      mediaQuery.removeEventListener('change', listener);
     };
   }, [isIntroActive]);
 
@@ -28,15 +36,15 @@ export default function LandingPage() {
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.1,
+        staggerChildren: shouldReduceMotion ? 0 : 0.1,
         delayChildren: isIntroActive ? 2.3 : 0,
       },
     },
   };
 
   const itemVariants: Variants = {
-    hidden: { opacity: 0, y: 24 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
+    hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 24 },
+    visible: { opacity: 1, y: 0, transition: { duration: shouldReduceMotion ? 0.1 : 0.6, ease: [0.16, 1, 0.3, 1] } },
   };
 
   return (
@@ -59,8 +67,14 @@ export default function LandingPage() {
         className="w-full flex-1 flex flex-col items-center justify-center relative overflow-hidden"
       >
         {/* Background Ambient Glows */}
-        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] rounded-full bg-primary-600/10 blur-[130px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] rounded-full bg-violet-600/10 blur-[130px] pointer-events-none" />
+        <div 
+          style={{ transform: 'translate3d(0,0,0)', willChange: 'transform' }}
+          className="absolute top-[-10%] left-[-10%] w-[80%] sm:w-[45%] h-[80%] sm:h-[45%] rounded-full bg-primary-600/5 sm:bg-primary-600/10 blur-[80px] sm:blur-[130px] pointer-events-none" 
+        />
+        <div 
+          style={{ transform: 'translate3d(0,0,0)', willChange: 'transform' }}
+          className="absolute bottom-[-10%] right-[-10%] w-[80%] sm:w-[45%] h-[80%] sm:h-[45%] rounded-full bg-violet-600/5 sm:bg-violet-600/10 blur-[80px] sm:blur-[130px] pointer-events-none" 
+        />
 
         {/* HERO SECTION */}
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-16 lg:py-24">
