@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, Variants } from 'framer-motion';
-import { ArrowRight, Sparkles, BrainCircuit, Target, Zap, Bot, CheckCircle2, Award, Compass } from 'lucide-react';
+import { ArrowRight, Sparkles, BrainCircuit, Target, Zap, Bot, CheckCircle2, Award, Compass, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { IntroScreen } from '@/components/ui/IntroScreen';
 import { HeroShowcase } from '@/components/ui/HeroShowcase';
@@ -238,7 +238,7 @@ export default function LandingPage() {
           </div>
 
           <motion.div 
-            className="grid md:grid-cols-3 gap-8"
+            className="grid md:grid-cols-2 lg:grid-cols-4 gap-8"
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
@@ -265,6 +265,13 @@ export default function LandingPage() {
                 icon: BrainCircuit,
                 color: "text-violet-500 bg-violet-500/10 border-violet-500/20",
                 badge: "Smart Recommendations"
+              },
+              {
+                title: "AI Voice Mock Interview",
+                description: "Practice realistic voice-based mock interviews with adaptive questions and detailed performance coaching reports.",
+                icon: Mic,
+                color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+                badge: "Interactive Practice"
               }
             ].map((feature, i) => (
               <motion.div 
@@ -272,24 +279,26 @@ export default function LandingPage() {
                 variants={itemVariants}
                 whileHover={{ y: -8, scale: 1.02 }}
                 transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="glass p-8 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-lg hover:shadow-2xl hover:border-primary-500/40 bg-white/80 dark:bg-slate-900/60 transition-all duration-300 relative group overflow-hidden"
+                className="glass p-8 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-lg hover:shadow-2xl hover:border-primary-500/40 bg-white/80 dark:bg-slate-900/60 transition-all duration-300 relative group overflow-hidden flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between mb-6">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-inner ${feature.color}`}>
-                    <feature.icon className="w-7 h-7" />
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-inner ${feature.color}`}>
+                      <feature.icon className="w-7 h-7" />
+                    </div>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      {feature.badge}
+                    </span>
                   </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                    {feature.badge}
-                  </span>
-                </div>
 
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3 font-heading group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors">
-                  {feature.title}
-                </h3>
-                
-                <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm">
-                  {feature.description}
-                </p>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3 font-heading group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors">
+                    {feature.title}
+                  </h3>
+                  
+                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm">
+                    {feature.description}
+                  </p>
+                </div>
 
                 <div className="mt-6 pt-4 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center text-xs font-semibold text-primary-600 dark:text-primary-400 group-hover:translate-x-1 transition-transform">
                   Learn more <ArrowRight className="w-3.5 h-3.5 ml-1.5" />

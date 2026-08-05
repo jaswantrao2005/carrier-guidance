@@ -8,12 +8,14 @@ const resumeRoutes = require('./routes/resume/resume.routes');
 const chatRoutes = require('./routes/chat.routes');
 const interviewRoutes = require('./routes/interview.routes');
 const errorHandler = require('./middlewares/error.middleware');
+const requestLogger = require('./middlewares/logger.middleware');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 
 // Root route
 app.get('/', (req, res) => {

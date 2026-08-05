@@ -1,4 +1,6 @@
 const errorHandler = (err, req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] 🔴 ERROR OCCURRED: ${req.method} ${req.originalUrl}`);
   console.error(err.stack || err.message);
 
   const statusCode = err.statusCode || 500;
