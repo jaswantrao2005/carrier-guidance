@@ -15,6 +15,7 @@
     "express": "^4.22.2",
     "groq-sdk": "^1.4.1",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.12.1",
     "mongoose": "^9.7.3",
     "multer": "^2.2.0",
     "pdf-parse-new": "^2.1.0"

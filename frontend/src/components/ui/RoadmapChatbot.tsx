@@ -45,7 +45,7 @@ export const RoadmapChatbot: React.FC<RoadmapChatbotProps> = ({ resumeContext })
       // Actually, the backend code expects `history` and `query` separately.
       const history = messages.map(m => ({ role: m.role, content: m.content }));
       
-      const response = await apiClient.post('/chat/roadmap', {
+      const response = await apiClient.post('chat/roadmap', {
         query: userMessage,
         history: history,
         resumeContext: resumeContext

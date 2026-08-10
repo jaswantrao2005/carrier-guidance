@@ -1,14 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/features/auth/AuthContext';
 import apiClient from '@/features/api/client';
 import { InterviewRoom } from '@/components/ui/InterviewRoom';
 import { Button } from '@/components/ui/Button';
-import { Calendar, Play, FileText, ChevronRight, Sparkles, Award, Loader2 } from 'lucide-react';
+import { Calendar, Play, FileText, ChevronRight, Sparkles, Award, Loader2, UploadCloud, X, HelpCircle, Info, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+
+interface ResearchBrief {
+  majorDevelopments: string[];
+  keyProducts: string[];
+  recentStrategy: string;
+  focusAreas: string[];
+}
 
 export default function MockInterviewPage() {
   const { user, isLoading } = useAuth();
@@ -18,7 +25,28 @@ export default function MockInterviewPage() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [selectedRole, setSelectedRole] = useState<string>('Software Engineer');
   const [customRole, setCustomRole] = useState<string>('');
+  
+  // Job Description state
+  const [jobDescriptionText, setJobDescriptionText] = useState<string>('');
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: number; status: 'uploading' | 'success' | 'error'; error?: string }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Company details state
+  const [companyName, setCompanyName] = useState<string>('');
+  
+  // Research brief state
+  const [isResearching, setIsResearching] = useState<boolean>(false);
+  const [researchBrief, setResearchBrief] = useState<ResearchBrief | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [showBriefScreen, setShowBriefScreen] = useState<boolean>(false);
   const [isInterviewing, setIsInterviewing] = useState<boolean>(false);
+
+  // Permission states
+  const [showPermissionScreen, setShowPermissionScreen] = useState<boolean>(false);
+  const [micPermission, setMicPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
+  const [cameraPermission, setCameraPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
+  const [userStream, setUserStream] = useState<MediaStream | null>(null);
+  const permissionVideoRef = useRef<HTMLVideoElement>(null);
 
   const roles = [
     'Software Engineer',
@@ -45,7 +73,7 @@ export default function MockInterviewPage() {
     const fetchHistory = async () => {
       if (!user) return;
       try {
-        const response = await apiClient.get('/interview/history');
+        const response = await apiClient.get('interview/history');
         if (response.data.success) {
           setHistory(response.data.data);
         }
@@ -58,13 +86,156 @@ export default function MockInterviewPage() {
     fetchHistory();
   }, [user]);
 
+  // Clean up media stream on unmount
+  useEffect(() => {
+    return () => {
+      if (userStream) {
+        userStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [userStream]);
+
+  // Automatically request permission when permission screen opens
+  useEffect(() => {
+    if (showPermissionScreen) {
+      requestPermissions();
+    }
+  }, [showPermissionScreen]);
+
+  const requestPermissions = async () => {
+    setMicPermission('pending');
+    setCameraPermission('pending');
+    
+    // Stop any existing stream tracks first
+    if (userStream) {
+      userStream.getTracks().forEach(track => track.stop());
+      setUserStream(null);
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      setMicPermission('granted');
+      setCameraPermission('granted');
+      setUserStream(stream);
+      setTimeout(() => {
+        if (permissionVideoRef.current) {
+          permissionVideoRef.current.srcObject = stream;
+        }
+      }, 150);
+    } catch (err) {
+      console.warn("Combined Camera/Mic request failed, trying audio only:", err);
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMicPermission('granted');
+        setCameraPermission('denied');
+        setUserStream(audioStream);
+      } catch (audioErr) {
+        console.error("Audio permission failed:", audioErr);
+        setMicPermission('denied');
+        setCameraPermission('denied');
+      }
+    }
+  };
+
+  const handleStartProcess = async () => {
+    if (companyName.trim()) {
+      setIsResearching(true);
+      setResearchError(null);
+      setResearchBrief(null);
+      setShowBriefScreen(true);
+      try {
+        const response = await apiClient.post('interview/research', { companyName });
+        if (response.data.success) {
+          setResearchBrief(response.data.data);
+        } else {
+          setResearchError("Company research is currently unavailable. The interview can still proceed using your role, resume, and job description.");
+        }
+      } catch (err) {
+        console.error("Research failed:", err);
+        setResearchError("Company research is currently unavailable. The interview can still proceed using your role, resume, and job description.");
+      } finally {
+        setIsResearching(false);
+      }
+    } else {
+      setShowPermissionScreen(true);
+    }
+  };
+
   const handleStartInterview = () => {
-    setIsInterviewing(true);
+    setShowBriefScreen(false);
+    setShowPermissionScreen(true);
   };
 
   const handleFinishInterview = (reportId: string) => {
     setIsInterviewing(false);
+    setShowBriefScreen(false);
+    setShowPermissionScreen(false);
+    setResearchBrief(null);
+    setResearchError(null);
+    if (userStream) {
+      userStream.getTracks().forEach(track => track.stop());
+      setUserStream(null);
+    }
     router.push(`/mock-interview/report/${reportId}`);
+  };
+
+  // Handle file uploads for Job Description
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Process files sequentially/parallelly and append their texts
+    const newFiles = Array.from(files);
+    
+    // Check validation errors first
+    const validExtensions = ['pdf', 'txt', 'docx'];
+    
+    for (const file of newFiles) {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!ext || !validExtensions.includes(ext)) {
+        alert(`Unsupported file format for "${file.name}". Please upload PDF, TXT, or DOCX.`);
+        continue;
+      }
+      
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`"${file.name}" exceeds the 5MB size limit.`);
+        continue;
+      }
+
+      const fileObj = { name: file.name, size: file.size, status: 'uploading' as const };
+      setUploadedFiles(prev => [...prev, fileObj]);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await apiClient.post('interview/upload-jd', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        if (response.data.success) {
+          setUploadedFiles(prev => 
+            prev.map(f => f.name === file.name ? { ...f, status: 'success' } : f)
+          );
+          setJobDescriptionText(prev => (prev ? prev + "\n\n" + response.data.text : response.data.text));
+        } else {
+          throw new Error(response.data.error || "Failed to parse file");
+        }
+      } catch (err: any) {
+        console.error(err);
+        setUploadedFiles(prev => 
+          prev.map(f => f.name === file.name ? { ...f, status: 'error', error: err.message || "Failed to parse text" } : f)
+        );
+      }
+    }
+  };
+
+  const removeUploadedFile = (indexToRemove: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== indexToRemove));
+    // Reset/re-clear job description context when files are deleted
+    if (uploadedFiles.length <= 1) {
+      setJobDescriptionText('');
+    }
   };
 
   if (isLoading || (!isLoading && !user)) {
@@ -82,6 +253,257 @@ export default function MockInterviewPage() {
       <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
         <InterviewRoom
           role={roleToUse}
+          jobDescriptionText={jobDescriptionText}
+          companyName={companyName}
+          companyResearch={researchBrief}
+          preCreatedStream={userStream}
+          onFinish={handleFinishInterview}
+          onCancel={() => {
+            if (userStream) {
+              userStream.getTracks().forEach(track => track.stop());
+              setUserStream(null);
+            }
+            setIsInterviewing(false);
+            setShowPermissionScreen(false);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Permission Setup Screen Overlay
+  if (showPermissionScreen) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10 flex items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass max-w-xl w-full rounded-3xl p-6 sm:p-10 border border-slate-200 dark:border-slate-800 shadow-2xl bg-white/60 dark:bg-slate-900/60 space-y-6"
+        >
+          <div className="text-center space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-primary-500 bg-primary-500/10 px-3 py-1 rounded-full border border-primary-500/20">
+              Setup & Permissions
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-heading">
+              Before We Begin
+            </h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              Please allow camera and microphone access to simulate a realistic interview experience.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* Microphone row */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50">
+              <div className="space-y-0.5">
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Microphone Access</span>
+                <p className="text-xs text-slate-400">Required to speak and record responses</p>
+              </div>
+              <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                micPermission === 'granted' 
+                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                  : micPermission === 'denied'
+                  ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                  : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+              }`}>
+                {micPermission === 'granted' ? 'Granted' : micPermission === 'denied' ? 'Denied' : 'Checking...'}
+              </span>
+            </div>
+
+            {/* Camera row */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50">
+              <div className="space-y-0.5">
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Camera Access (Optional)</span>
+                <p className="text-xs text-slate-400">Used for candidate floating live preview screen</p>
+              </div>
+              <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                cameraPermission === 'granted' 
+                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                  : cameraPermission === 'denied'
+                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                  : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+              }`}>
+                {cameraPermission === 'granted' ? 'Granted' : cameraPermission === 'denied' ? 'Denied' : 'Checking...'}
+              </span>
+            </div>
+
+            {/* Video preview or error explanation */}
+            {cameraPermission === 'granted' ? (
+              <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 aspect-video w-full bg-slate-950 shadow-inner">
+                <video 
+                  ref={permissionVideoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  className="w-full h-full object-cover scale-x-[-1]" 
+                />
+                <span className="absolute bottom-3 left-3 bg-slate-900/80 text-[10px] text-white font-bold px-2 py-0.5 rounded backdrop-blur">
+                  Live Preview
+                </span>
+              </div>
+            ) : cameraPermission === 'denied' ? (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex gap-2 text-amber-600 dark:text-amber-400">
+                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-xs leading-relaxed">
+                  Camera permission is denied. You can still proceed with the interview using only audio/voice responses.
+                </p>
+              </div>
+            ) : null}
+
+            {micPermission === 'denied' && (
+              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex gap-2 text-red-500">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-xs leading-relaxed">
+                  Microphone access is required to capture your answers. Please allow mic permissions in your browser.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                if (userStream) {
+                  userStream.getTracks().forEach(track => track.stop());
+                  setUserStream(null);
+                }
+                setShowPermissionScreen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            
+            {(micPermission === 'denied' || cameraPermission === 'denied') && (
+              <Button variant="outline" onClick={requestPermissions}>
+                Try Again
+              </Button>
+            )}
+
+            <Button 
+              disabled={micPermission !== 'granted'}
+              onClick={() => setIsInterviewing(true)}
+            >
+              Start Interview
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Intermediate screen for Company Research Brief
+  if (showBriefScreen) {
+    const roleToUse = selectedRole === 'Custom Role' ? (customRole || 'Software Engineer') : selectedRole;
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10 flex items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass max-w-2xl w-full rounded-3xl p-6 sm:p-10 border border-slate-200 dark:border-slate-800 shadow-2xl bg-white/60 dark:bg-slate-900/60 space-y-6"
+        >
+          <div className="text-center space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-primary-500 bg-primary-500/10 px-3 py-1 rounded-full border border-primary-500/20">
+              Company Briefing
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-heading">
+              Preparing for your interview at {companyName}
+            </h2>
+          </div>
+
+          {isResearching ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
+              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                Researching major developments and milestones for {companyName}...
+              </span>
+            </div>
+          ) : researchError ? (
+            <div className="space-y-6">
+              <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex gap-3 text-amber-600 dark:text-amber-400 shadow-sm">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <span className="text-sm font-medium leading-relaxed">{researchError}</span>
+              </div>
+              <div className="flex gap-4 justify-end">
+                <Button variant="outline" onClick={() => setShowBriefScreen(false)}>Cancel</Button>
+                <Button onClick={handleStartInterview}>Continue to Interview</Button>
+              </div>
+            </div>
+          ) : researchBrief ? (
+            <div className="space-y-6">
+              {/* Snapshot Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2">
+                  Company Snapshot
+                </h3>
+                
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase">Major Developments (Last Decade)</h4>
+                    <ul className="list-disc pl-5 mt-1.5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
+                      {researchBrief.majorDevelopments.map((d, i) => (
+                        <li key={i}>{d}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase">Key Products & Technologies</h4>
+                    <ul className="list-disc pl-5 mt-1.5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
+                      {researchBrief.keyProducts.map((p, i) => (
+                        <li key={i}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase">Recent Strategic Direction</h4>
+                    <p className="mt-1.5 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                      {researchBrief.recentStrategy}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interview Focus Areas */}
+              <div className="p-5 rounded-2xl bg-primary-500/5 border border-primary-500/10 space-y-2">
+                <h4 className="text-xs font-bold text-primary-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Info className="w-4 h-4" />
+                  Interview Focus Areas
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-2">
+                  Based on the company, role, and job description, your interview will focus on:
+                </p>
+                <ul className="list-disc pl-5 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                  {researchBrief.focusAreas.map((f, i) => (
+                    <li key={i}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex gap-4 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
+                <Button variant="outline" onClick={() => setShowBriefScreen(false)}>Cancel</Button>
+                <Button onClick={handleStartInterview}>
+                  Continue to Interview
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Active Interview Session Overlay
+  if (isInterviewing) {
+    const roleToUse = selectedRole === 'Custom Role' ? (customRole || 'Software Engineer') : selectedRole;
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
+        <InterviewRoom
+          role={roleToUse}
+          jobDescriptionText={jobDescriptionText}
+          companyName={companyName}
+          companyResearch={researchBrief}
           onFinish={handleFinishInterview}
           onCancel={() => setIsInterviewing(false)}
         />
@@ -159,9 +581,92 @@ export default function MockInterviewPage() {
                   </motion.div>
                 )}
 
-                <div className="pt-4">
+                {/* Optional Job Description Input */}
+                <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Optional — Job Description
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    Paste the target job description text below, or upload standard documents to customize your interview.
+                  </p>
+                  
+                  <textarea
+                    placeholder="Paste or write the job description here..."
+                    rows={4}
+                    value={jobDescriptionText}
+                    onChange={(e) => setJobDescriptionText(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-slate-900 dark:text-white resize-y"
+                  />
+
+                  {/* Document Uploader */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-primary-400 dark:hover:border-primary-600 transition-colors bg-white/30 dark:bg-slate-950/20"
+                    >
+                      <UploadCloud className="w-6 h-6 text-slate-400 mb-1.5" />
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Upload Job Description</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">Supports PDF, DOCX, TXT (Max 5MB)</span>
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileUpload} 
+                        multiple 
+                        accept=".pdf,.txt,.docx"
+                        className="hidden" 
+                      />
+                    </div>
+
+                    {/* Upload List */}
+                    {uploadedFiles.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Uploaded Documents</span>
+                        <div className="max-h-28 overflow-y-auto space-y-1.5 pr-1">
+                          {uploadedFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 text-xs">
+                              <div className="flex items-center gap-2 truncate pr-2">
+                                <FileText className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+                                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{file.name}</span>
+                                <span className="text-[10px] text-slate-400">({(file.size / 1024).toFixed(0)} KB)</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {file.status === 'uploading' && <Loader2 className="w-3 h-3 text-primary-500 animate-spin" />}
+                                {file.status === 'error' && <span className="text-[9px] text-red-500 font-bold" title={file.error}>Failed</span>}
+                                <button 
+                                  onClick={() => removeUploadedFile(idx)}
+                                  className="text-slate-400 hover:text-red-500 transition-colors p-0.5 rounded-full hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Optional Company Name Input */}
+                <div className="space-y-2 pt-4 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Optional — Company Name
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    If provided, we will perform web research to tailor questions to this company's products and strategic trajectory.
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Enter company name (e.g. Microsoft, Google, Stripe)"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="pt-4 flex gap-4">
                   <Button
-                    onClick={handleStartInterview}
+                    onClick={handleStartProcess}
                     disabled={selectedRole === 'Custom Role' && !customRole.trim()}
                     className="w-full sm:w-auto h-12 px-8 rounded-xl shadow-lg shadow-primary-500/20"
                   >
@@ -203,6 +708,11 @@ export default function MockInterviewPage() {
                           <span className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary-500 dark:group-hover:text-primary-400 transition-colors">
                             {item.role}
                           </span>
+                          {item.companyName && (
+                            <div className="text-xs text-slate-400 font-semibold">
+                              at {item.companyName}
+                            </div>
+                          )}
                           <div className="flex items-center text-[10px] text-slate-500 dark:text-slate-400">
                             <Calendar className="w-3 h-3 mr-1" />
                             {new Date(item.createdAt).toLocaleDateString(undefined, { 
@@ -215,6 +725,11 @@ export default function MockInterviewPage() {
                           <span className="text-xs font-extrabold text-primary-500 bg-primary-500/10 px-2 py-0.5 rounded border border-primary-500/20">
                             {item.overallScore}
                           </span>
+                          {item.jobMatchScore > 0 && (
+                            <span className="text-xs font-extrabold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20" title="Job Description Match Score">
+                              {item.jobMatchScore}%
+                            </span>
+                          )}
                           <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                         </div>
                       </div>

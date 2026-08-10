@@ -1,13 +1,16 @@
 const { generateNextQuestion, generateEvaluationReport } = require("../../services/gemini/interview.service");
+const { researchCompany } = require("../../services/search/research.service");
 const Interview = require("../../models/Interview");
 const Resume = require("../../models/Resume");
+const pdfParse = require("pdf-parse-new");
+const mammoth = require("mammoth");
 
 /**
  * Controller to fetch the next interview question adaptively.
  */
 const getNextQuestion = async (req, res, next) => {
   try {
-    const { role, history } = req.body;
+    const { role, history, jobDescriptionText, companyResearch } = req.body;
 
     if (!role) {
       return res.status(400).json({ success: false, error: "Role is required." });
@@ -24,7 +27,13 @@ const getNextQuestion = async (req, res, next) => {
       console.warn("Could not retrieve resume context for interview:", err.message);
     }
 
-    const nextQuestionData = await generateNextQuestion(role, history || [], resumeContext);
+    const nextQuestionData = await generateNextQuestion(
+      role,
+      history || [],
+      resumeContext,
+      jobDescriptionText || '',
+      companyResearch || null
+    );
 
     res.status(200).json({
       success: true,
@@ -40,14 +49,19 @@ const getNextQuestion = async (req, res, next) => {
  */
 const completeInterview = async (req, res, next) => {
   try {
-    const { role, history } = req.body;
+    const { role, history, jobDescriptionText, companyName, companyResearch } = req.body;
 
     if (!role || !history || !Array.isArray(history) || history.length === 0) {
       return res.status(400).json({ success: false, error: "Role and valid history are required." });
     }
 
-    // Generate comprehensive evaluation report using Gemini
-    const evaluationData = await generateEvaluationReport(role, history);
+    // Generate comprehensive evaluation report
+    const evaluationData = await generateEvaluationReport(
+      role,
+      history,
+      jobDescriptionText || '',
+      companyResearch || null
+    );
 
     // Save mock interview session to the database
     const newInterview = await Interview.create({
@@ -61,6 +75,11 @@ const completeInterview = async (req, res, next) => {
       techGaps: evaluationData.techGaps,
       communicationFeedback: evaluationData.communicationFeedback,
       roadmap: evaluationData.roadmap,
+      companyName: companyName || '',
+      jobDescriptionText: jobDescriptionText || '',
+      companyResearch: companyResearch || null,
+      jobMatchScore: evaluationData.jobMatchScore || 0,
+      jdMatchBreakdown: evaluationData.jdMatchBreakdown || { strongMatches: [], needsImprovement: [], notDemonstrated: [] }
     });
 
     res.status(201).json({
@@ -79,7 +98,7 @@ const completeInterview = async (req, res, next) => {
 const getInterviewHistory = async (req, res, next) => {
   try {
     const history = await Interview.find({ user: req.user.id })
-      .select("role overallScore categoryScores createdAt")
+      .select("role companyName jobDescriptionText overallScore jobMatchScore categoryScores createdAt")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -111,9 +130,71 @@ const getInterviewById = async (req, res, next) => {
   }
 };
 
+/**
+ * Controller to perform company web research.
+ */
+const getCompanyResearchData = async (req, res, next) => {
+  try {
+    const { companyName } = req.body;
+    if (!companyName) {
+      return res.status(400).json({ success: false, error: "Company name is required." });
+    }
+
+    const researchResult = await researchCompany(companyName);
+    if (researchResult.success) {
+      res.status(200).json({
+        success: true,
+        data: researchResult.data
+      });
+    } else {
+      res.status(200).json({
+        success: false,
+        error: researchResult.message || "Company research is currently unavailable."
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Controller to parse Job Description files (PDF, TXT, DOCX).
+ */
+const parseJobDescriptionFile = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No document file was uploaded." });
+    }
+
+    const ext = req.file.originalname.split('.').pop().toLowerCase();
+    let extractedText = '';
+
+    if (ext === 'pdf') {
+      const pdfData = await pdfParse(req.file.buffer);
+      extractedText = pdfData.text;
+    } else if (ext === 'txt') {
+      extractedText = req.file.buffer.toString('utf-8');
+    } else if (ext === 'docx') {
+      const docData = await mammoth.extractRawText({ buffer: req.file.buffer });
+      extractedText = docData.value;
+    } else {
+      return res.status(400).json({ success: false, error: "Unsupported file format. Please upload PDF, TXT, or DOCX." });
+    }
+
+    res.status(200).json({
+      success: true,
+      text: extractedText.trim()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getNextQuestion,
   completeInterview,
   getInterviewHistory,
   getInterviewById,
+  getCompanyResearchData,
+  parseJobDescriptionFile
 };

@@ -31,7 +31,7 @@ export default function ResumeDetailPage() {
     const fetchResume = async () => {
       if (!user || !resumeId) return;
       try {
-        const response = await apiClient.get(`/resume/${resumeId}`);
+        const response = await apiClient.get(`resume/${resumeId}`);
         if (response.data.success) {
           setResume(response.data.resume);
         } else {

@@ -58,6 +58,30 @@ const interviewSchema = new mongoose.Schema(
       practiceTopics: [String],
       suggestedNextSteps: [String],
     },
+    // Optional Company & Job Description details
+    companyName: {
+      type: String,
+      default: '',
+    },
+    jobDescriptionText: {
+      type: String,
+      default: '',
+    },
+    companyResearch: {
+      majorDevelopments: [String],
+      keyProducts: [String],
+      recentStrategy: { type: String, default: '' },
+      focusAreas: [String],
+    },
+    jobMatchScore: {
+      type: Number,
+      default: 0,
+    },
+    jdMatchBreakdown: {
+      strongMatches: [String],
+      needsImprovement: [String],
+      notDemonstrated: [String],
+    },
   },
   {
     timestamps: true,

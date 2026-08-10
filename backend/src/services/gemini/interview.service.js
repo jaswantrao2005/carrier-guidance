@@ -23,7 +23,7 @@ function parseJSONResponse(text) {
 /**
  * Dynamically generates the next question for the user's mock interview using Groq.
  */
-async function generateNextQuestion(role, history = [], resumeContext = null) {
+async function generateNextQuestion(role, history = [], resumeContext = null, jobDescriptionText = '', companyResearch = null) {
   try {
     if (!groq) {
       throw new Error("GROQ_API_KEY is not configured");
@@ -41,14 +41,21 @@ async function generateNextQuestion(role, history = [], resumeContext = null) {
       phaseInstruction = `Phase 3: Ask a personalized question about their resume context (technologies used, projects listed, or past experience).
       Resume context: 
       Summary: ${resumeContext.candidateSummary || "N/A"}
-      Skills: ${resumeContext.technicalSkills?.join(", ") || "N/A"}
-      Recommended Roles: ${resumeContext.careerRoles?.join(", ") || "N/A"}`;
-    } else if (questionCount >= 2 && questionCount <= 6) {
-      phaseInstruction = "Phase 4: Ask a technical question relevant to the selected domain. Build up difficulty (Easy to Intermediate to Advanced). Add follow-ups if they mentioned something specific in their last answer.";
-    } else if (questionCount >= 7 && questionCount <= 8) {
-      phaseInstruction = "Phase 5: Ask a behavioral/scenario-based HR question (teamwork, conflict resolution, deadlines, or failures).";
+      Skills: ${resumeContext.technicalSkills?.join(", ") || "N/A"}`;
+    } else if (questionCount >= 4 && questionCount <= 5 && jobDescriptionText) {
+      phaseInstruction = `Phase 4: Ask a question specifically tailored to the following Job Description. Test whether they have experience or knowledge corresponding to its key requirements.
+      Job Description:
+      ${jobDescriptionText}`;
+    } else if (questionCount >= 6 && questionCount <= 7) {
+      phaseInstruction = `Phase 5: Ask a technical question relevant to the selected domain (${role}). Build up difficulty (Easy to Intermediate to Advanced). Add follow-ups if they mentioned something specific in their last answer.`;
+    } else if (questionCount === 8 && companyResearch) {
+      phaseInstruction = `Phase 6: Ask a company-specific question assessing their interest or alignment with the company's recent developments or products.
+      Company Research Context:
+      Developments: ${companyResearch.majorDevelopments?.join(", ") || "N/A"}
+      Key Products: ${companyResearch.keyProducts?.join(", ") || "N/A"}
+      Strategy: ${companyResearch.recentStrategy || "N/A"}`;
     } else {
-      phaseInstruction = "Phase 6: Ask a final concluding question (e.g. why we should hire you or inviting them to ask questions).";
+      phaseInstruction = "Phase 7: Ask a realistic behavioral/scenario-based HR question (teamwork, conflict resolution, deadlines, or failures) and close the interview.";
     }
 
     const systemPrompt = `You are a professional, senior tech interviewer at an elite company.
@@ -68,7 +75,7 @@ INSTRUCTIONS:
 - Return ONLY a valid JSON object with no markdown syntax wrappers, matching this format:
 {
   "question": "The question string",
-  "category": "Introduction | Background | Resume | Technical | Behavioral | Closing",
+  "category": "Introduction | Background | Resume | JobDescription | Technical | CompanySpecific | Behavioral | Closing",
   "difficulty": "Easy | Intermediate | Advanced"
 }
 `;
@@ -100,7 +107,7 @@ INSTRUCTIONS:
 /**
  * Evaluates the completed interview conversation history and creates a detailed performance report using Groq.
  */
-async function generateEvaluationReport(role, history) {
+async function generateEvaluationReport(role, history, jobDescriptionText = '', companyResearch = null) {
   try {
     if (!groq) {
       throw new Error("GROQ_API_KEY is not configured");
@@ -114,8 +121,15 @@ Evaluate the completed mock interview for the role of: "${role}".
 Interview Transcript:
 ${history.map((h, i) => `Q: ${h.question}\nA: ${h.answer || "[No Answer]"}`).join("\n\n")}
 
+${jobDescriptionText ? `Compare the candidate's responses against the target Job Description:\n${jobDescriptionText}\n` : ''}
+${companyResearch ? `Evaluate if the candidate aligned well with the company's profile:\nProducts: ${companyResearch.keyProducts?.join(', ') || ''}\nStrategy: ${companyResearch.recentStrategy || ''}\n` : ''}
+
 Conduct a thorough analysis of the transcript.
-Evaluate communication clarity, technical depth, problem-solving skills, and role readiness. Do not claim to evaluate emotional or psychological states.
+Evaluate communication clarity, technical depth, problem-solving skills, and role readiness.
+
+CRITICAL EVALUATION GUIDELINES:
+1. ACCENT & PRONUNCIATION TOLERANCE: The candidate's response may show phonetic transcription quirks characteristic of regional English accents (Indian English, British English, IELTS pronunciation patterns, etc.). Do NOT penalize the candidate's scores (especially Technical Knowledge and Problem Solving) for accents or dialect variations. Accent does NOT equal a lack of communication ability.
+2. MULTILINGUAL RESPONSES: The candidate is permitted to respond in supported non-English languages (such as Hindi, Odia, Bengali, Marathi, Tamil, Telugu, Kannada, Malayalam, Gujarati, Punjabi, etc.). If you detect non-English text in the candidate's responses, translate it to English under the hood. Evaluate the TECHNICAL QUALITY of their answer objectively. Do NOT give them a low technical score simply because they answered in another language. Reflect language fluency suggestions constructively under the "communicationFeedback" qualitative field rather than downgrading their "technicalKnowledge" score.
 
 Return a valid JSON object with the following keys and data types only:
 {
@@ -150,6 +164,12 @@ Return a valid JSON object with the following keys and data types only:
     "conceptsToRevise": ["string"],
     "practiceTopics": ["string"],
     "suggestedNextSteps": ["string"]
+  },
+  "jobMatchScore": 0, // integer 0-100 matching Job Description (return 0 if no JD was provided)
+  "jdMatchBreakdown": { // return empty arrays if no JD was provided
+    "strongMatches": ["string"],
+    "needsImprovement": ["string"],
+    "notDemonstrated": ["string"]
   }
 }
 `;

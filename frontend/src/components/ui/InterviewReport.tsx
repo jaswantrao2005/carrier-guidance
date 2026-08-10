@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, AlertTriangle, MessageSquare, TrendingUp, Lightbulb, ChevronDown, ChevronUp, BookOpen, UserCheck } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, MessageSquare, TrendingUp, Lightbulb, ChevronDown, ChevronUp, BookOpen, UserCheck, X } from 'lucide-react';
 
 interface TranscriptItem {
   question: string;
@@ -40,6 +40,14 @@ interface InterviewReportProps {
     };
     transcript: TranscriptItem[];
     createdAt: string;
+    companyName?: string;
+    jobDescriptionText?: string;
+    jobMatchScore?: number;
+    jdMatchBreakdown?: {
+      strongMatches: string[];
+      needsImprovement: string[];
+      notDemonstrated: string[];
+    };
   };
   onBack: () => void;
 }
@@ -101,6 +109,11 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white font-heading">
             {report.role} Candidate Assessment
           </h1>
+          {report.companyName && (
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Targeted Role at <span className="text-primary-500 font-bold">{report.companyName}</span>
+            </p>
+          )}
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Completed on {new Date(report.createdAt).toLocaleDateString(undefined, {
               year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -173,6 +186,74 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
         </div>
 
       </div>
+
+      {/* Optional Job Description Match analysis section */}
+      {report.jobMatchScore !== undefined && report.jobMatchScore > 0 && (
+        <div className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl bg-white/60 dark:bg-slate-900/60 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white font-heading flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-primary-500" />
+                Job Description Match Analysis
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Evaluation of your skills and interview responses against the targeted job description requirements.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl px-4 py-2 text-emerald-600 dark:text-emerald-400 shrink-0 self-start sm:self-center">
+              <span className="text-xs font-bold uppercase tracking-wider">Overall Match</span>
+              <span className="text-2xl font-extrabold font-heading">{report.jobMatchScore}%</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Strong Matches */}
+            <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 space-y-3">
+              <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                Strong Matches
+              </h4>
+              {report.jdMatchBreakdown?.strongMatches && report.jdMatchBreakdown.strongMatches.length > 0 ? (
+                <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-2 list-disc pl-4">
+                  {report.jdMatchBreakdown.strongMatches.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              ) : (
+                <span className="text-xs text-slate-400 italic">No strong matches recorded.</span>
+              )}
+            </div>
+
+            {/* Needs Improvement */}
+            <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/10 space-y-3">
+              <h4 className="text-xs font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4" />
+                Needs Improvement
+              </h4>
+              {report.jdMatchBreakdown?.needsImprovement && report.jdMatchBreakdown.needsImprovement.length > 0 ? (
+                <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-2 list-disc pl-4">
+                  {report.jdMatchBreakdown.needsImprovement.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              ) : (
+                <span className="text-xs text-slate-400 italic">No gaps recorded.</span>
+              )}
+            </div>
+
+            {/* Not Demonstrated */}
+            <div className="p-5 rounded-2xl bg-slate-500/5 border border-slate-500/10 space-y-3">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5 text-slate-400">
+                <X className="w-4 h-4" />
+                Not Demonstrated
+              </h4>
+              {report.jdMatchBreakdown?.notDemonstrated && report.jdMatchBreakdown.notDemonstrated.length > 0 ? (
+                <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-2 list-disc pl-4">
+                  {report.jdMatchBreakdown.notDemonstrated.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              ) : (
+                <span className="text-xs text-slate-400 italic">None.</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Question by Question Review */}
       <div className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl bg-white/60 dark:bg-slate-900/60">

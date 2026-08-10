@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUserProfile = async (currentToken: string) => {
     try {
       // The API client interceptor will attach the token
-      const response = await apiClient.get('/auth/profile');
+      const response = await apiClient.get('auth/profile');
       if (response.data.success) {
         setUser(response.data.user);
       } else {

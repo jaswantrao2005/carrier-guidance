@@ -29,7 +29,7 @@ export default function DashboardPage() {
     const fetchHistory = async () => {
       if (!user) return;
       try {
-        const response = await apiClient.get('/resume/history');
+        const response = await apiClient.get('resume/history');
         if (response.data.success) {
           setResumes(response.data.resumes);
         }

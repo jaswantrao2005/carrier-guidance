@@ -26,7 +26,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const response = await apiClient.post('/auth/register', { name, email, password });
+      const response = await apiClient.post('auth/register', { name, email, password });
       if (response.data.success) {
         // Automatically login the user or redirect them to login page
         // Since backend doesn't return a token on register based on docs (only success & user), we should redirect to login.

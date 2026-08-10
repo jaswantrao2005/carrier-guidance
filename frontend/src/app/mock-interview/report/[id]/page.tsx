@@ -28,7 +28,7 @@ export default function MockInterviewReportPage() {
     const fetchReport = async () => {
       if (!user || !reportId) return;
       try {
-        const response = await apiClient.get(`/interview/${reportId}`);
+        const response = await apiClient.get(`interview/${reportId}`);
         if (response.data.success) {
           setReport(response.data.data);
         } else {
