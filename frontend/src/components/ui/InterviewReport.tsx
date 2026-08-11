@@ -48,6 +48,17 @@ interface InterviewReportProps {
       needsImprovement: string[];
       notDemonstrated: string[];
     };
+    recordingConsent?: boolean;
+    recordingUrl?: string;
+    recordingDuration?: number;
+    integrityStatus?: 'Clean' | 'Warnings' | 'Terminated';
+    integrityWarningsCount?: number;
+    integrityEvents?: {
+      type: string;
+      timestamp: number;
+      description: string;
+      severity: string;
+    }[];
   };
   onBack: () => void;
 }
@@ -121,6 +132,96 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
           </p>
         </div>
       </div>
+
+      {/* Interview Integrity & Recording Section */}
+      {(report.recordingUrl || report.integrityStatus) && (
+        <div className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl bg-white/60 dark:bg-slate-900/60">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white font-heading flex items-center gap-2">
+                <AlertTriangle className={`w-5 h-5 ${report.integrityStatus === 'Clean' ? 'text-emerald-500' : report.integrityStatus === 'Warnings' ? 'text-amber-500' : 'text-red-500'}`} />
+                Interview Integrity & Recording
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Automated monitoring results from your interview session.
+              </p>
+            </div>
+            
+            {/* Status Badge */}
+            <div className={`px-4 py-2 rounded-2xl border text-sm font-bold flex items-center gap-2 ${
+              report.integrityStatus === 'Clean' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' :
+              report.integrityStatus === 'Warnings' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+              'bg-red-500/10 text-red-600 border-red-500/20'
+            }`}>
+              {report.integrityStatus === 'Clean' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              {report.integrityStatus === 'Clean' ? 'Integrity Verified' : report.integrityStatus === 'Warnings' ? `${report.integrityWarningsCount} Warnings Detected` : 'Terminated for Integrity Violations'}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Video Player */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2 mb-4">
+                Interview Recording
+              </h3>
+              {report.recordingUrl ? (
+                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black aspect-video shadow-inner">
+                  {/* Assuming backend API URL is localhost:5000 in dev, ideally this is passed via env or config, but we can use relative path if frontend proxy handles it, or full URL */}
+                  <video 
+                    src={`http://localhost:5000${report.recordingUrl}`} 
+                    controls 
+                    className="w-full h-full object-cover" 
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 aspect-video flex flex-col items-center justify-center text-slate-400 p-6 text-center">
+                  <UserCheck className="w-8 h-8 mb-2 opacity-50" />
+                  <span className="text-sm font-medium">Recording not available</span>
+                  <span className="text-xs">Candidate opted out or recording failed to upload.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Integrity Events Timeline */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2 mb-4 flex items-center justify-between">
+                <span>Monitoring Events</span>
+                {report.recordingDuration && (
+                  <span className="text-xs font-semibold normal-case text-slate-400">
+                    Duration: {Math.floor(report.recordingDuration / 60)}m {report.recordingDuration % 60}s
+                  </span>
+                )}
+              </h3>
+              
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                {report.integrityEvents && report.integrityEvents.length > 0 ? (
+                  report.integrityEvents.map((evt, idx) => (
+                    <div key={idx} className="flex gap-3 items-start p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/60">
+                      <div className="shrink-0 mt-0.5">
+                        <AlertTriangle className={`w-4 h-4 ${evt.severity === 'High' ? 'text-red-500' : 'text-amber-500'}`} />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex justify-between items-start">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{evt.type}</span>
+                          <span className="text-[10px] font-mono text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                            {Math.floor(evt.timestamp / 60)}:{String(evt.timestamp % 60).padStart(2, '0')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">{evt.description}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
+                    <span className="text-sm font-medium">No integrity warnings recorded during the interview. Excellent!</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Category Scores & Communication Feedback */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

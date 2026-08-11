@@ -7,9 +7,11 @@ const {
   getInterviewHistory, 
   getInterviewById,
   getCompanyResearchData,
-  parseJobDescriptionFile
+  parseJobDescriptionFile,
+  uploadVideo
 } = require("../controllers/interview/interview.controller");
 const authMiddleware = require("../middlewares/auth.middleware");
+const videoUpload = require("../middlewares/video.middleware");
 
 // Configure memory storage for job description document parsing
 const upload = multer({
@@ -26,5 +28,6 @@ router.get("/history", getInterviewHistory);
 router.post("/research", getCompanyResearchData);
 router.post("/upload-jd", upload.single("file"), parseJobDescriptionFile);
 router.get("/:id", getInterviewById);
+router.post("/:id/recording", videoUpload.single("video"), uploadVideo);
 
 module.exports = router;

@@ -40,6 +40,7 @@ export default function MockInterviewPage() {
   const [researchError, setResearchError] = useState<string | null>(null);
   const [showBriefScreen, setShowBriefScreen] = useState<boolean>(false);
   const [isInterviewing, setIsInterviewing] = useState<boolean>(false);
+  const [recordingConsent, setRecordingConsent] = useState<boolean | null>(null);
 
   // Permission states
   const [showPermissionScreen, setShowPermissionScreen] = useState<boolean>(false);
@@ -163,6 +164,7 @@ export default function MockInterviewPage() {
 
   const handleStartInterview = () => {
     setShowBriefScreen(false);
+    setRecordingConsent(null);
     setShowPermissionScreen(true);
   };
 
@@ -257,6 +259,7 @@ export default function MockInterviewPage() {
           companyName={companyName}
           companyResearch={researchBrief}
           preCreatedStream={userStream}
+          recordingConsent={recordingConsent === true}
           onFinish={handleFinishInterview}
           onCancel={() => {
             if (userStream) {
@@ -360,6 +363,38 @@ export default function MockInterviewPage() {
             )}
           </div>
 
+          {/* Recording Consent */}
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="space-y-1">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Would you like to record this interview?</span>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                If you choose to record, your interview video will be securely stored with your Mock Interview record and may be used to review your interview performance and interview-integrity events.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => setRecordingConsent(true)}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold border transition-all ${
+                  recordingConsent === true 
+                  ? 'bg-primary-500 text-white border-primary-500 shadow-md' 
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-primary-400'
+                }`}
+              >
+                Record Interview
+              </button>
+              <button
+                onClick={() => setRecordingConsent(false)}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold border transition-all ${
+                  recordingConsent === false 
+                  ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-700 dark:border-slate-600 shadow-md' 
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                }`}
+              >
+                Continue Without Recording
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
             <Button 
               variant="outline" 
@@ -381,7 +416,7 @@ export default function MockInterviewPage() {
             )}
 
             <Button 
-              disabled={micPermission !== 'granted'}
+              disabled={micPermission !== 'granted' || recordingConsent === null}
               onClick={() => setIsInterviewing(true)}
             >
               Start Interview

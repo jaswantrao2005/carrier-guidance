@@ -82,6 +82,36 @@ const interviewSchema = new mongoose.Schema(
       needsImprovement: [String],
       notDemonstrated: [String],
     },
+    // Recording & Integrity Fields
+    recordingConsent: {
+      type: Boolean,
+      default: false,
+    },
+    recordingUrl: {
+      type: String,
+      default: null,
+    },
+    recordingDuration: {
+      type: Number,
+      default: 0,
+    },
+    integrityStatus: {
+      type: String,
+      enum: ['Clean', 'Warnings', 'Terminated'],
+      default: 'Clean',
+    },
+    integrityWarningsCount: {
+      type: Number,
+      default: 0,
+    },
+    integrityEvents: [
+      {
+        type: { type: String, required: true },
+        timestamp: { type: Number, required: true },
+        description: { type: String },
+        severity: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+      }
+    ],
   },
   {
     timestamps: true,

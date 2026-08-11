@@ -49,7 +49,10 @@ const getNextQuestion = async (req, res, next) => {
  */
 const completeInterview = async (req, res, next) => {
   try {
-    const { role, history, jobDescriptionText, companyName, companyResearch } = req.body;
+    const { 
+      role, history, jobDescriptionText, companyName, companyResearch,
+      recordingConsent, integrityStatus, integrityWarningsCount, integrityEvents, recordingDuration
+    } = req.body;
 
     if (!role || !history || !Array.isArray(history) || history.length === 0) {
       return res.status(400).json({ success: false, error: "Role and valid history are required." });
@@ -79,7 +82,12 @@ const completeInterview = async (req, res, next) => {
       jobDescriptionText: jobDescriptionText || '',
       companyResearch: companyResearch || null,
       jobMatchScore: evaluationData.jobMatchScore || 0,
-      jdMatchBreakdown: evaluationData.jdMatchBreakdown || { strongMatches: [], needsImprovement: [], notDemonstrated: [] }
+      jdMatchBreakdown: evaluationData.jdMatchBreakdown || { strongMatches: [], needsImprovement: [], notDemonstrated: [] },
+      recordingConsent: recordingConsent || false,
+      recordingDuration: recordingDuration || 0,
+      integrityStatus: integrityStatus || 'Clean',
+      integrityWarningsCount: integrityWarningsCount || 0,
+      integrityEvents: integrityEvents || []
     });
 
     res.status(201).json({
@@ -190,11 +198,43 @@ const parseJobDescriptionFile = async (req, res, next) => {
   }
 };
 
+/**
+ * Controller to upload the final video recording blob.
+ */
+const uploadVideo = async (req, res, next) => {
+  try {
+    const interviewId = req.params.id;
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No video file was uploaded." });
+    }
+
+    const interview = await Interview.findOne({ _id: interviewId, user: req.user.id });
+    if (!interview) {
+      return res.status(404).json({ success: false, error: "Interview not found." });
+    }
+
+    // In a real production app with S3, this would be an S3 URL.
+    // For local S3-like storage, we just map it to our static route
+    const recordingUrl = `/uploads/recordings/${req.file.filename}`;
+    
+    interview.recordingUrl = recordingUrl;
+    await interview.save();
+
+    res.status(200).json({
+      success: true,
+      recordingUrl
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getNextQuestion,
   completeInterview,
   getInterviewHistory,
   getInterviewById,
   getCompanyResearchData,
-  parseJobDescriptionFile
+  parseJobDescriptionFile,
+  uploadVideo
 };

@@ -11,6 +11,7 @@ interface InterviewRoomProps {
   companyName?: string;
   companyResearch?: any;
   preCreatedStream?: MediaStream | null;
+  recordingConsent?: boolean;
   onFinish: (reportId: string) => void;
   onCancel: () => void;
 }
@@ -98,6 +99,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   companyName = '', 
   companyResearch = null, 
   preCreatedStream = null,
+  recordingConsent = false,
   onFinish, 
   onCancel 
 }) => {
@@ -111,6 +113,17 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [timer, setTimer] = useState<number>(0);
   const [micError, setMicError] = useState<string | null>(null);
   
+  // Integrity & Recording States
+  const [warningsCount, setWarningsCount] = useState<number>(0);
+  const [recentWarning, setRecentWarning] = useState<string | null>(null);
+  const integrityEventsRef = useRef<any[]>([]);
+  const lastEventTimeRef = useRef<{ [key: string]: number }>({});
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const interviewStartTimeRef = useRef<number>(Date.now());
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const integrityIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Multilingual Speech support
   const [spokenLanguage, setSpokenLanguage] = useState<string>('en-IN'); // defaults to Indian English / Multilingual understanding
 
@@ -123,7 +136,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
-  // Sync preCreatedStream to user video preview frame
+  // Sync preCreatedStream to user video preview frame and initialize recording/integrity
   useEffect(() => {
     if (preCreatedStream) {
       const videoTracks = preCreatedStream.getVideoTracks();
@@ -135,8 +148,90 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           }
         }, 150);
       }
+
+      // Initialize Recording
+      if (recordingConsent) {
+        try {
+          const recorder = new MediaRecorder(preCreatedStream, { mimeType: 'video/webm;codecs=vp8,opus' });
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+              recordedChunksRef.current.push(e.data);
+            }
+          };
+          recorder.start(1000); // chunk every 1 second
+          mediaRecorderRef.current = recorder;
+          setIsRecording(true);
+        } catch (e) {
+          console.error("MediaRecorder initialization failed:", e);
+        }
+      }
+
+      // Initialize FaceDetector Integrity Monitor
+      if ('FaceDetector' in window) {
+        try {
+          const faceDetector = new (window as any).FaceDetector({ maxDetectedFaces: 5, fastMode: true });
+          integrityIntervalRef.current = setInterval(async () => {
+            if (videoRef.current && status !== 'idle' && status !== 'finishing') {
+              try {
+                const faces = await faceDetector.detect(videoRef.current);
+                handleIntegrityCheck(faces.length);
+              } catch (e) {}
+            }
+          }, 3000);
+        } catch (e) {
+          console.warn("FaceDetector failed to initialize:", e);
+        }
+      }
     }
-  }, [preCreatedStream]);
+    
+    return () => {
+      if (integrityIntervalRef.current) clearInterval(integrityIntervalRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [preCreatedStream, recordingConsent]);
+
+  const addIntegrityEvent = (type: string, description: string, severity: 'Low' | 'Medium' | 'High') => {
+    const now = Date.now();
+    const lastTime = lastEventTimeRef.current[type] || 0;
+    
+    // Debounce similar events by 10 seconds
+    if (now - lastTime < 10000) return;
+    lastEventTimeRef.current[type] = now;
+    
+    const timestamp = Math.floor((now - interviewStartTimeRef.current) / 1000);
+    integrityEventsRef.current.push({ type, description, severity, timestamp });
+    
+    setWarningsCount(prev => {
+      const newCount = prev + 1;
+      if (newCount >= 7 && status !== 'finishing') {
+        forceTerminateInterview();
+      }
+      return newCount;
+    });
+
+    setRecentWarning(description);
+    setTimeout(() => setRecentWarning(null), 5000);
+  };
+
+  const handleIntegrityCheck = (facesCount: number) => {
+    if (facesCount === 0) {
+      addIntegrityEvent('Candidate Left Frame', 'No face detected in the camera frame.', 'High');
+    } else if (facesCount > 1) {
+      addIntegrityEvent('Multiple Persons', 'Secondary person detected in the frame.', 'High');
+    }
+  };
+
+  const forceTerminateInterview = () => {
+    try { recognitionRef.current?.stop(); } catch (e) {}
+    try { synthesisRef.current?.cancel(); } catch (e) {}
+    setStatus('finishing');
+    const warningMsg = "Interview terminated automatically due to repeated integrity warnings.";
+    setRecentWarning(warningMsg);
+    // Proceed to finalize with whatever history exists
+    finalizeInterview(qaHistory, 'Terminated');
+  };
 
   // Sync spoken language changes directly to the speech recognition instance
   useEffect(() => {
@@ -310,8 +405,35 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     }
   };
 
-  const finalizeInterview = async (history: QARecord[]) => {
+  const uploadRecording = async (interviewId: string) => {
+    if (!mediaRecorderRef.current || recordedChunksRef.current.length === 0) return;
+    
+    try {
+      if (mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      // Give a tiny buffer for the last chunk to push
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+      const formData = new FormData();
+      formData.append('video', blob, 'recording.webm');
+      
+      await apiClient.post(`interview/${interviewId}/recording`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000, // Large timeout for video uploads
+      });
+    } catch (e) {
+      console.error("Failed to upload recording:", e);
+    }
+  };
+
+  const finalizeInterview = async (history: QARecord[], forcedStatus?: string) => {
     setStatus('finishing');
+    
+    const finalDuration = Math.floor((Date.now() - interviewStartTimeRef.current) / 1000);
+    const finalIntegrityStatus = forcedStatus || (warningsCount > 0 ? 'Warnings' : 'Clean');
+
     try {
       const response = await apiClient.post('interview/complete', {
         role,
@@ -319,10 +441,22 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         jobDescriptionText,
         companyName,
         companyResearch,
+        recordingConsent,
+        recordingDuration: finalDuration,
+        integrityStatus: finalIntegrityStatus,
+        integrityWarningsCount: warningsCount,
+        integrityEvents: integrityEventsRef.current
       });
 
       if (response.data.success) {
-        onFinish(response.data.data._id);
+        const interviewId = response.data.data._id;
+        
+        // If recording consent given, upload the video blob now
+        if (recordingConsent) {
+          await uploadRecording(interviewId);
+        }
+
+        onFinish(interviewId);
       } else {
         throw new Error("Failed to save interview");
       }
@@ -361,11 +495,40 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             muted 
             className="w-full h-full object-cover scale-x-[-1]" 
           />
+          {isRecording && (
+            <span className="absolute top-2 right-2 bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full animate-pulse flex items-center gap-1 shadow-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-white block"></span>
+              REC
+            </span>
+          )}
           <span className="absolute bottom-2 left-2 bg-slate-900/80 text-[8px] text-white font-bold px-1.5 py-0.5 rounded backdrop-blur">
             Candidate Camera
           </span>
         </div>
       )}
+
+      {/* Warnings Overlay Toast */}
+      <AnimatePresence>
+        {recentWarning && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-amber-500/90 text-white px-4 py-2 rounded-xl shadow-xl shadow-amber-500/20 backdrop-blur-md flex items-center gap-3 border border-amber-400"
+          >
+            <AlertTriangle className="w-5 h-5" />
+            <div className="flex flex-col">
+              <span className="text-xs font-extrabold uppercase tracking-widest opacity-80">Integrity Alert</span>
+              <span className="text-sm font-semibold">{recentWarning}</span>
+            </div>
+            {warningsCount > 0 && (
+              <span className="ml-3 bg-amber-600 px-2 py-0.5 rounded text-xs font-bold">
+                {warningsCount}/7
+              </span>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Top Info Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">

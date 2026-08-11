@@ -10,12 +10,17 @@ const interviewRoutes = require('./routes/interview.routes');
 const errorHandler = require('./middlewares/error.middleware');
 const requestLogger = require('./middlewares/logger.middleware');
 
+const path = require('path');
+
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Root route
 app.get('/', (req, res) => {
