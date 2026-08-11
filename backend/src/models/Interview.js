@@ -112,6 +112,23 @@ const interviewSchema = new mongoose.Schema(
         severity: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
       }
     ],
+    // Experience Fields
+    experienceLevel: {
+      type: String,
+      enum: ['fresher', 'experienced'],
+      default: 'fresher'
+    },
+    totalExperienceYears: {
+      type: Number,
+      default: 0
+    },
+    employmentHistory: [
+      {
+        companyName: String,
+        position: String,
+        durationYears: Number
+      }
+    ]
   },
   {
     timestamps: true,

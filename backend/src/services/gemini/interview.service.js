@@ -23,7 +23,7 @@ function parseJSONResponse(text) {
 /**
  * Dynamically generates the next question for the user's mock interview using Groq.
  */
-async function generateNextQuestion(role, history = [], resumeContext = null, jobDescriptionText = '', companyResearch = null) {
+async function generateNextQuestion(role, history = [], resumeContext = null, jobDescriptionText = '', companyResearch = null, experienceLevel = 'fresher', totalExperienceYears = 0, employmentHistory = []) {
   try {
     if (!groq) {
       throw new Error("GROQ_API_KEY is not configured");
@@ -36,18 +36,21 @@ async function generateNextQuestion(role, history = [], resumeContext = null, jo
     if (questionCount === 0) {
       phaseInstruction = "Phase 1: Welcome the candidate, introduce yourself as the interviewer, and ask them to introduce themselves.";
     } else if (questionCount === 1) {
-      phaseInstruction = "Phase 2: Ask about their career goals, background, or why they want to pursue this domain.";
+      if (experienceLevel === 'experienced') {
+        phaseInstruction = `Phase 2: Ask a question about their ${totalExperienceYears} years of professional experience. Ask about their career progression, responsibilities, or a transition between these previous roles:\n${employmentHistory.map(e => `- ${e.position} at ${e.companyName} (${e.durationYears} years)`).join('\n')}`;
+      } else {
+        phaseInstruction = "Phase 2: Ask about their education, foundational skills, or why they want to pursue this domain as a fresher.";
+      }
     } else if (questionCount >= 2 && questionCount <= 3 && resumeContext) {
-      phaseInstruction = `Phase 3: Ask a personalized question about their resume context (technologies used, projects listed, or past experience).
-      Resume context: 
-      Summary: ${resumeContext.candidateSummary || "N/A"}
-      Skills: ${resumeContext.technicalSkills?.join(", ") || "N/A"}`;
+      if (experienceLevel === 'experienced') {
+        phaseInstruction = `Phase 3: Ask a personalized question about their resume context (technologies used, projects listed, or past experience). Compare their resume with their manually entered employment history, and if there are discrepancies or interesting overlaps, ask them to clarify naturally.\nResume context: \nSummary: ${resumeContext.candidateSummary || "N/A"}\nSkills: ${resumeContext.technicalSkills?.join(", ") || "N/A"}\nEntered Employment History: ${employmentHistory.map(e => `${e.companyName} (${e.durationYears} yrs)`).join(', ')}`;
+      } else {
+        phaseInstruction = `Phase 3: Ask a personalized question about their resume context, focusing on academic projects, internships, or technical skills.\nResume context: \nSummary: ${resumeContext.candidateSummary || "N/A"}\nSkills: ${resumeContext.technicalSkills?.join(", ") || "N/A"}`;
+      }
     } else if (questionCount >= 4 && questionCount <= 5 && jobDescriptionText) {
-      phaseInstruction = `Phase 4: Ask a question specifically tailored to the following Job Description. Test whether they have experience or knowledge corresponding to its key requirements.
-      Job Description:
-      ${jobDescriptionText}`;
+      phaseInstruction = `Phase 4: Ask a question specifically tailored to the following Job Description. Test whether they have experience or knowledge corresponding to its key requirements. Ensure the difficulty matches a ${experienceLevel} level candidate.\nJob Description:\n${jobDescriptionText}`;
     } else if (questionCount >= 6 && questionCount <= 7) {
-      phaseInstruction = `Phase 5: Ask a technical question relevant to the selected domain (${role}). Build up difficulty (Easy to Intermediate to Advanced). Add follow-ups if they mentioned something specific in their last answer.`;
+      phaseInstruction = `Phase 5: Ask a technical question relevant to the selected domain (${role}). The candidate is ${experienceLevel === 'fresher' ? 'an entry-level fresher' : 'an experienced professional with ' + totalExperienceYears + ' years experience'}. Frame the technical question accordingly (fundamentals for freshers; architecture, production systems, and decision-making for experienced). Build up difficulty appropriately.`;
     } else if (questionCount === 8 && companyResearch) {
       phaseInstruction = `Phase 6: Ask a company-specific question assessing their interest or alignment with the company's recent developments or products.
       Company Research Context:
@@ -55,7 +58,7 @@ async function generateNextQuestion(role, history = [], resumeContext = null, jo
       Key Products: ${companyResearch.keyProducts?.join(", ") || "N/A"}
       Strategy: ${companyResearch.recentStrategy || "N/A"}`;
     } else {
-      phaseInstruction = "Phase 7: Ask a realistic behavioral/scenario-based HR question (teamwork, conflict resolution, deadlines, or failures) and close the interview.";
+      phaseInstruction = `Phase 7: Ask a realistic behavioral/scenario-based HR question and close the interview. For an experienced candidate, ask about team leadership, resolving production issues, or disagreements. For a fresher, ask about dealing with failure, learning new skills, or a challenging academic project.`;
     }
 
     const systemPrompt = `You are a professional, senior tech interviewer at an elite company.
@@ -107,7 +110,7 @@ INSTRUCTIONS:
 /**
  * Evaluates the completed interview conversation history and creates a detailed performance report using Groq.
  */
-async function generateEvaluationReport(role, history, jobDescriptionText = '', companyResearch = null) {
+async function generateEvaluationReport(role, history, jobDescriptionText = '', companyResearch = null, experienceLevel = 'fresher', totalExperienceYears = 0, employmentHistory = []) {
   try {
     if (!groq) {
       throw new Error("GROQ_API_KEY is not configured");
@@ -117,6 +120,7 @@ async function generateEvaluationReport(role, history, jobDescriptionText = '', 
 
     const prompt = `
 Evaluate the completed mock interview for the role of: "${role}".
+Candidate Experience Level: ${experienceLevel === 'fresher' ? 'Fresher (Entry-level)' : `Experienced (${totalExperienceYears} years total)`}
 
 Interview Transcript:
 ${history.map((h, i) => `Q: ${h.question}\nA: ${h.answer || "[No Answer]"}`).join("\n\n")}
@@ -124,7 +128,7 @@ ${history.map((h, i) => `Q: ${h.question}\nA: ${h.answer || "[No Answer]"}`).joi
 ${jobDescriptionText ? `Compare the candidate's responses against the target Job Description:\n${jobDescriptionText}\n` : ''}
 ${companyResearch ? `Evaluate if the candidate aligned well with the company's profile:\nProducts: ${companyResearch.keyProducts?.join(', ') || ''}\nStrategy: ${companyResearch.recentStrategy || ''}\n` : ''}
 
-Conduct a thorough analysis of the transcript.
+Conduct a thorough analysis of the transcript. Keep the candidate's experience level (${experienceLevel}) in mind when evaluating the depth and quality of their answers.
 Evaluate communication clarity, technical depth, problem-solving skills, and role readiness.
 
 CRITICAL EVALUATION GUIDELINES:

@@ -42,6 +42,14 @@ export default function MockInterviewPage() {
   const [isInterviewing, setIsInterviewing] = useState<boolean>(false);
   const [recordingConsent, setRecordingConsent] = useState<boolean | null>(null);
 
+  // Experience setup state
+  const [experienceLevel, setExperienceLevel] = useState<'fresher' | 'experienced'>('fresher');
+  const [totalExperienceYears, setTotalExperienceYears] = useState<number | ''>('');
+  const [employmentHistory, setEmploymentHistory] = useState<Array<{id: string, companyName: string, position: string, durationYears: number | ''}>>([
+    { id: 'initial', companyName: '', position: '', durationYears: '' }
+  ]);
+  const [experienceWarning, setExperienceWarning] = useState<string | null>(null);
+
   // Permission states
   const [showPermissionScreen, setShowPermissionScreen] = useState<boolean>(false);
   const [micPermission, setMicPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
@@ -103,6 +111,24 @@ export default function MockInterviewPage() {
     }
   }, [showPermissionScreen]);
 
+  // Experience Warning Validation
+  useEffect(() => {
+    if (experienceLevel === 'experienced') {
+      const total = Number(totalExperienceYears) || 0;
+      let sumDurations = 0;
+      for (const emp of employmentHistory) {
+        sumDurations += Number(emp.durationYears) || 0;
+      }
+      if (sumDurations > total && total > 0) {
+        setExperienceWarning(`The total employment duration (${sumDurations} years) exceeds your stated total experience (${total} years). Please review your entries.`);
+      } else {
+        setExperienceWarning(null);
+      }
+    } else {
+      setExperienceWarning(null);
+    }
+  }, [totalExperienceYears, employmentHistory, experienceLevel]);
+
   const requestPermissions = async () => {
     setMicPermission('pending');
     setCameraPermission('pending');
@@ -139,6 +165,21 @@ export default function MockInterviewPage() {
   };
 
   const handleStartProcess = async () => {
+    // Validation for experienced
+    if (experienceLevel === 'experienced') {
+      const total = Number(totalExperienceYears);
+      if (isNaN(total) || total <= 0) {
+        alert("Please enter a valid total experience greater than 0.");
+        return;
+      }
+      for (const emp of employmentHistory) {
+        if (!emp.companyName.trim() || !emp.position.trim() || Number(emp.durationYears) <= 0) {
+          alert("Please fill out all employment history fields with valid durations greater than 0.");
+          return;
+        }
+      }
+    }
+
     if (companyName.trim()) {
       setIsResearching(true);
       setResearchError(null);
@@ -260,6 +301,9 @@ export default function MockInterviewPage() {
           companyResearch={researchBrief}
           preCreatedStream={userStream}
           recordingConsent={recordingConsent === true}
+          experienceLevel={experienceLevel}
+          totalExperienceYears={experienceLevel === 'fresher' ? 0 : Number(totalExperienceYears)}
+          employmentHistory={experienceLevel === 'fresher' ? [] : employmentHistory.map(e => ({ companyName: e.companyName, position: e.position, durationYears: Number(e.durationYears) }))}
           onFinish={handleFinishInterview}
           onCancel={() => {
             if (userStream) {
@@ -539,6 +583,9 @@ export default function MockInterviewPage() {
           jobDescriptionText={jobDescriptionText}
           companyName={companyName}
           companyResearch={researchBrief}
+          experienceLevel={experienceLevel}
+          totalExperienceYears={experienceLevel === 'fresher' ? 0 : Number(totalExperienceYears)}
+          employmentHistory={experienceLevel === 'fresher' ? [] : employmentHistory.map(e => ({ companyName: e.companyName, position: e.position, durationYears: Number(e.durationYears) }))}
           onFinish={handleFinishInterview}
           onCancel={() => setIsInterviewing(false)}
         />
@@ -697,6 +744,147 @@ export default function MockInterviewPage() {
                     onChange={(e) => setCompanyName(e.target.value)}
                     className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-slate-900 dark:text-white"
                   />
+                </div>
+
+                {/* Experience Level */}
+                <div className="space-y-4 pt-4 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Experience Level
+                  </label>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setExperienceLevel('fresher')}
+                      className={`p-3 rounded-xl border text-sm font-semibold transition-all text-center ${
+                        experienceLevel === 'fresher'
+                          ? 'bg-primary-500 text-white border-primary-500 shadow-md shadow-primary-500/20'
+                          : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      Fresher
+                    </button>
+                    <button
+                      onClick={() => setExperienceLevel('experienced')}
+                      className={`p-3 rounded-xl border text-sm font-semibold transition-all text-center ${
+                        experienceLevel === 'experienced'
+                          ? 'bg-primary-500 text-white border-primary-500 shadow-md shadow-primary-500/20'
+                          : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      Experienced
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {experienceLevel === 'experienced' && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-6 pt-2 overflow-hidden"
+                      >
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            Professional Experience
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              placeholder="e.g. 5"
+                              value={totalExperienceYears}
+                              onChange={(e) => setTotalExperienceYears(e.target.value === '' ? '' : Number(e.target.value))}
+                              className="w-24 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-slate-900 dark:text-white"
+                            />
+                            <span className="text-sm font-semibold text-slate-500">years</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                            Previous Employment
+                          </label>
+                          
+                          <div className="space-y-4">
+                            {employmentHistory.map((emp, idx) => (
+                              <div key={emp.id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-3 relative group">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase">Company Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. ABC Technologies"
+                                    value={emp.companyName}
+                                    onChange={(e) => {
+                                      const newHistory = [...employmentHistory];
+                                      newHistory[idx].companyName = e.target.value;
+                                      setEmploymentHistory(newHistory);
+                                    }}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 text-slate-900 dark:text-white"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Position / Title</label>
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. Software Engineer"
+                                      value={emp.position}
+                                      onChange={(e) => {
+                                        const newHistory = [...employmentHistory];
+                                        newHistory[idx].position = e.target.value;
+                                        setEmploymentHistory(newHistory);
+                                      }}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 text-slate-900 dark:text-white"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Duration (Years)</label>
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      min="0"
+                                      placeholder="e.g. 2.5"
+                                      value={emp.durationYears}
+                                      onChange={(e) => {
+                                        const newHistory = [...employmentHistory];
+                                        newHistory[idx].durationYears = e.target.value === '' ? '' : Number(e.target.value);
+                                        setEmploymentHistory(newHistory);
+                                      }}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 text-slate-900 dark:text-white"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                {employmentHistory.length > 1 && (
+                                  <button
+                                    onClick={() => setEmploymentHistory(prev => prev.filter(e => e.id !== emp.id))}
+                                    className="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            onClick={() => setEmploymentHistory(prev => [...prev, { id: Date.now().toString(), companyName: '', position: '', durationYears: '' }])}
+                            className="text-sm font-semibold text-primary-500 hover:text-primary-600 flex items-center gap-1 transition-colors"
+                          >
+                            + Add Previous Position
+                          </button>
+                        </div>
+                        
+                        {experienceWarning && (
+                          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex gap-2 text-amber-600 dark:text-amber-400 mt-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                            <p className="text-xs leading-relaxed">{experienceWarning}</p>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="pt-4 flex gap-4">

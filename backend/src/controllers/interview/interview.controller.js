@@ -10,7 +10,7 @@ const mammoth = require("mammoth");
  */
 const getNextQuestion = async (req, res, next) => {
   try {
-    const { role, history, jobDescriptionText, companyResearch } = req.body;
+    const { role, history, jobDescriptionText, companyResearch, experienceLevel, totalExperienceYears, employmentHistory } = req.body;
 
     if (!role) {
       return res.status(400).json({ success: false, error: "Role is required." });
@@ -32,7 +32,10 @@ const getNextQuestion = async (req, res, next) => {
       history || [],
       resumeContext,
       jobDescriptionText || '',
-      companyResearch || null
+      companyResearch || null,
+      experienceLevel || 'fresher',
+      totalExperienceYears || 0,
+      employmentHistory || []
     );
 
     res.status(200).json({
@@ -51,19 +54,22 @@ const completeInterview = async (req, res, next) => {
   try {
     const { 
       role, history, jobDescriptionText, companyName, companyResearch,
-      recordingConsent, integrityStatus, integrityWarningsCount, integrityEvents, recordingDuration
+      recordingConsent, integrityStatus, integrityWarningsCount, integrityEvents, recordingDuration,
+      experienceLevel, totalExperienceYears, employmentHistory
     } = req.body;
 
     if (!role || !history || !Array.isArray(history) || history.length === 0) {
       return res.status(400).json({ success: false, error: "Role and valid history are required." });
     }
 
-    // Generate comprehensive evaluation report
     const evaluationData = await generateEvaluationReport(
       role,
       history,
       jobDescriptionText || '',
-      companyResearch || null
+      companyResearch || null,
+      experienceLevel || 'fresher',
+      totalExperienceYears || 0,
+      employmentHistory || []
     );
 
     // Save mock interview session to the database
@@ -87,7 +93,10 @@ const completeInterview = async (req, res, next) => {
       recordingDuration: recordingDuration || 0,
       integrityStatus: integrityStatus || 'Clean',
       integrityWarningsCount: integrityWarningsCount || 0,
-      integrityEvents: integrityEvents || []
+      integrityEvents: integrityEvents || [],
+      experienceLevel: experienceLevel || 'fresher',
+      totalExperienceYears: totalExperienceYears || 0,
+      employmentHistory: employmentHistory || []
     });
 
     res.status(201).json({

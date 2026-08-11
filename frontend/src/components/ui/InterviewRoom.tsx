@@ -12,6 +12,9 @@ interface InterviewRoomProps {
   companyResearch?: any;
   preCreatedStream?: MediaStream | null;
   recordingConsent?: boolean;
+  experienceLevel?: 'fresher' | 'experienced';
+  totalExperienceYears?: number;
+  employmentHistory?: Array<{companyName: string, position: string, durationYears: number}>;
   onFinish: (reportId: string) => void;
   onCancel: () => void;
 }
@@ -100,6 +103,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   companyResearch = null, 
   preCreatedStream = null,
   recordingConsent = false,
+  experienceLevel = 'fresher',
+  totalExperienceYears = 0,
+  employmentHistory = [],
   onFinish, 
   onCancel 
 }) => {
@@ -108,8 +114,10 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [category, setCategory] = useState<string>('Introduction');
   const [difficulty, setDifficulty] = useState<string>('Easy');
   const [status, setStatus] = useState<'idle' | 'speaking' | 'listening' | 'processing' | 'finishing'>('idle');
+  const statusRef = useRef<'idle' | 'speaking' | 'listening' | 'processing' | 'finishing'>('idle');
   
   const [transcript, setTranscript] = useState<string>('');
+  const [interimTranscript, setInterimTranscript] = useState<string>('');
   const [timer, setTimer] = useState<number>(0);
   const [micError, setMicError] = useState<string | null>(null);
   
@@ -227,6 +235,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     try { recognitionRef.current?.stop(); } catch (e) {}
     try { synthesisRef.current?.cancel(); } catch (e) {}
     setStatus('finishing');
+    statusRef.current = 'finishing';
     const warningMsg = "Interview terminated automatically due to repeated integrity warnings.";
     setRecentWarning(warningMsg);
     // Proceed to finalize with whatever history exists
@@ -253,19 +262,35 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
       rec.onresult = (event: any) => {
         let finalTranscript = '';
+        let currentInterim = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript;
+          } else {
+            currentInterim += event.results[i][0].transcript;
           }
         }
-        setTranscript(prev => (prev + ' ' + finalTranscript).trim());
+        
+        if (finalTranscript) {
+          setTranscript(prev => (prev + ' ' + finalTranscript).trim());
+        }
+        setInterimTranscript(currentInterim);
       };
 
       rec.onerror = (event: any) => {
         console.error("Speech Recognition Error:", event.error);
         if (event.error === 'not-allowed') {
           setMicError("Microphone permission denied. Please check your browser settings.");
+        }
+      };
+
+      rec.onend = () => {
+        // Automatically restart listening if we are still in listening mode (e.g., after a pause)
+        if (statusRef.current === 'listening') {
+          try {
+            rec.start();
+          } catch (e) {}
         }
       };
 
@@ -323,12 +348,16 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
   const fetchNextQuestion = async (history: QARecord[]) => {
     setStatus('processing');
+    statusRef.current = 'processing';
     try {
       const response = await apiClient.post('interview/next-question', {
         role,
         history,
         jobDescriptionText,
         companyResearch,
+        experienceLevel,
+        totalExperienceYears,
+        employmentHistory
       });
 
       if (response.data.success) {
@@ -363,6 +392,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     
     utterance.onstart = () => {
       setStatus('speaking');
+      statusRef.current = 'speaking';
     };
 
     utterance.onend = () => {
@@ -382,6 +412,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       synthesisRef.current.cancel();
     }
     setStatus('listening');
+    statusRef.current = 'listening';
     setMicError(null);
     try {
       recognitionRef.current?.start();
@@ -430,6 +461,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
   const finalizeInterview = async (history: QARecord[], forcedStatus?: string) => {
     setStatus('finishing');
+    statusRef.current = 'finishing';
     
     const finalDuration = Math.floor((Date.now() - interviewStartTimeRef.current) / 1000);
     const finalIntegrityStatus = forcedStatus || (warningsCount > 0 ? 'Warnings' : 'Clean');
@@ -445,7 +477,10 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         recordingDuration: finalDuration,
         integrityStatus: finalIntegrityStatus,
         integrityWarningsCount: warningsCount,
-        integrityEvents: integrityEventsRef.current
+        integrityEvents: integrityEventsRef.current,
+        experienceLevel,
+        totalExperienceYears,
+        employmentHistory
       });
 
       if (response.data.success) {
@@ -602,7 +637,14 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             </div>
             
             <div className="w-full bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 min-h-[100px] text-slate-800 dark:text-slate-200 text-sm leading-relaxed whitespace-pre-wrap shadow-inner">
-              {transcript.trim() ? transcript : <span className="text-slate-400 italic">Start speaking to transcribe your response...</span>}
+              {transcript.trim() || interimTranscript.trim() ? (
+                <>
+                  <span>{transcript}</span>
+                  <span className="text-slate-400 italic"> {interimTranscript}</span>
+                </>
+              ) : (
+                <span className="text-slate-400 italic">Start speaking to transcribe your response...</span>
+              )}
             </div>
           </div>
         )}
