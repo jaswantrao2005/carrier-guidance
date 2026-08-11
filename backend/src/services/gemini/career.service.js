@@ -18,6 +18,9 @@ function normalizeAnalysisPayload(payload) {
       careerRoles: [],
       atsScore: 0,
       suggestions: [],
+      education: [],
+      projects: [],
+      workExperience: [],
     };
   }
 
@@ -50,6 +53,9 @@ function normalizeAnalysisPayload(payload) {
         ? payload.atsScore
         : Number(payload.atsScore || 0),
     suggestions: parseArray(payload.suggestions),
+    education: parseArray(payload.education),
+    projects: parseArray(payload.projects),
+    workExperience: parseArray(payload.workExperience || payload.work_experience || payload.experience),
   };
 }
 
@@ -85,7 +91,10 @@ Analyze the following resume and return valid JSON only with these exact keys:
   "weaknesses": ["string"],
   "careerRoles": ["string"],
   "atsScore": 0,
-  "suggestions": ["string"]
+  "suggestions": ["string"],
+  "education": ["string"],
+  "projects": ["string"],
+  "workExperience": ["string"]
 }
 
 Resume:

@@ -140,6 +140,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const interimTranscriptRef = useRef<string>('');
+  const spokenLanguageRef = useRef<string>('en-IN');
   
   // Video preview refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -245,6 +246,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
 
   // Sync spoken language changes directly to the speech recognition instance
   useEffect(() => {
+    spokenLanguageRef.current = spokenLanguage;
     if (recognitionRef.current) {
       recognitionRef.current.lang = spokenLanguage;
     }
@@ -253,13 +255,16 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   useEffect(() => {
     synthesisRef.current = window.speechSynthesis;
     
-    // Initialize Web Speech Recognition
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = spokenLanguage;
+    if (!SpeechRecognition) {
+      setMicError("Speech Recognition is not supported by your current browser. Please use Chrome or Safari.");
+      return;
+    }
+    
+    const rec = new SpeechRecognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = spokenLanguageRef.current;
 
       rec.onresult = (event: any) => {
         let finalTranscript = '';
@@ -294,24 +299,31 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           setInterimTranscript('');
           interimTranscriptRef.current = '';
         }
-
-        // Automatically restart listening if we are still in listening mode (e.g., after a pause)
-        if (statusRef.current === 'listening') {
-          try {
-            rec.start();
-          } catch (e) {}
-        }
+        
+        // Note: We deliberately do NOT call rec.start() here.
+        // We let the watchdog timer handle restarts to prevent rapid looping or losing gesture trust.
       };
 
       recognitionRef.current = rec;
-    } else {
-      setMicError("Speech Recognition is not supported by your current browser. Please use Chrome or Safari.");
-    }
 
-    // Start with the first question
-    fetchNextQuestion([]);
+      // Watchdog Timer: Chrome forcefully stops recognition after 60s of continuous speech.
+      // This interval constantly attempts to restart the engine if it should be listening.
+      // If it's already listening, .start() throws an error which we safely ignore.
+      const watchdog = setInterval(() => {
+        if (statusRef.current === 'listening' && recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {
+            // Expected error when already started.
+          }
+        }
+      }, 500);
 
-    return () => {
+      // Start with the first question
+      fetchNextQuestion([]);
+
+      return () => {
+        clearInterval(watchdog);
       // Cleanup audio synthesis and mic recognition
       if (synthesisRef.current) {
         synthesisRef.current.cancel();
