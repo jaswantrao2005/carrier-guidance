@@ -139,6 +139,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const recognitionRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const interimTranscriptRef = useRef<string>('');
   
   // Video preview refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -276,6 +277,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           setTranscript(prev => (prev + ' ' + finalTranscript).trim());
         }
         setInterimTranscript(currentInterim);
+        interimTranscriptRef.current = currentInterim;
       };
 
       rec.onerror = (event: any) => {
@@ -286,6 +288,13 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       };
 
       rec.onend = () => {
+        // Commit any lingering interim text that never fired 'isFinal' before the engine stopped
+        if (interimTranscriptRef.current) {
+          setTranscript(prev => (prev + ' ' + interimTranscriptRef.current).trim());
+          setInterimTranscript('');
+          interimTranscriptRef.current = '';
+        }
+
         // Automatically restart listening if we are still in listening mode (e.g., after a pause)
         if (statusRef.current === 'listening') {
           try {
@@ -366,6 +375,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         setCategory(cat);
         setDifficulty(diff);
         setTranscript('');
+        setInterimTranscript('');
+        interimTranscriptRef.current = '';
         
         // Let the AI speak the question
         speakQuestion(question);
@@ -426,7 +437,10 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       recognitionRef.current?.stop();
     } catch (e) {}
     
-    const updatedHistory = [...qaHistory, { question: currentQuestion, answer: transcript.trim() || "[No verbal response]" }];
+    // Capture any lingering interim text that wasn't finalized
+    const finalAnswer = (transcript + ' ' + interimTranscriptRef.current).trim() || "[No verbal response]";
+    
+    const updatedHistory = [...qaHistory, { question: currentQuestion, answer: finalAnswer }];
     setQaHistory(updatedHistory);
 
     if (updatedHistory.length >= 10) {
