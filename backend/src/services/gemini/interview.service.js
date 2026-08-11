@@ -134,10 +134,11 @@ Evaluate communication clarity, technical depth, problem-solving skills, and rol
 CRITICAL EVALUATION GUIDELINES:
 1. ACCENT & PRONUNCIATION TOLERANCE: The candidate's response may show phonetic transcription quirks characteristic of regional English accents (Indian English, British English, IELTS pronunciation patterns, etc.). Do NOT penalize the candidate's scores (especially Technical Knowledge and Problem Solving) for accents or dialect variations. Accent does NOT equal a lack of communication ability.
 2. MULTILINGUAL RESPONSES: The candidate is permitted to respond in supported non-English languages (such as Hindi, Odia, Bengali, Marathi, Tamil, Telugu, Kannada, Malayalam, Gujarati, Punjabi, etc.). If you detect non-English text in the candidate's responses, translate it to English under the hood. Evaluate the TECHNICAL QUALITY of their answer objectively. Do NOT give them a low technical score simply because they answered in another language. Reflect language fluency suggestions constructively under the "communicationFeedback" qualitative field rather than downgrading their "technicalKnowledge" score.
+3. EXHAUSTIVE EVALUATION REQUIRED: You MUST evaluate every single question from the provided Interview Transcript. Do NOT summarize or skip questions. The length of your output "transcript" array must EXACTLY match the number of questions in the transcript.
 
 Return a valid JSON object with the following keys and data types only:
 {
-  "transcript": [
+  "transcript": [ // MUST contain an entry for EVERY question in the transcript
     {
       "question": "string",
       "answer": "string",
