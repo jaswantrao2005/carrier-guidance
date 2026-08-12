@@ -10,18 +10,19 @@ const mammoth = require("mammoth");
  */
 const getNextQuestion = async (req, res, next) => {
   try {
-    const { role, history, jobDescriptionText, companyResearch, experienceLevel, totalExperienceYears, employmentHistory } = req.body;
+    const { role, history, jobDescriptionText, companyResearch, experienceLevel, totalExperienceYears, employmentHistory, resumeId } = req.body;
 
     if (!role) {
       return res.status(400).json({ success: false, error: "Role is required." });
     }
 
-    // Try fetching the latest resume analysis for the user to provide context
+    // Try fetching the specific resume analysis for the user to provide context
     let resumeContext = null;
     try {
-      const latestResume = await Resume.findOne({ user: req.user.id }).sort({ createdAt: -1 });
-      if (latestResume && latestResume.analysis) {
-        resumeContext = latestResume.analysis;
+      const query = resumeId ? { _id: resumeId, user: req.user.id } : { user: req.user.id };
+      const resume = await Resume.findOne(query).sort({ createdAt: -1 });
+      if (resume && resume.analysis) {
+        resumeContext = resume.analysis;
       }
     } catch (err) {
       console.warn("Could not retrieve resume context for interview:", err.message);
@@ -55,7 +56,7 @@ const completeInterview = async (req, res, next) => {
     const { 
       role, history, jobDescriptionText, companyName, companyResearch,
       recordingConsent, integrityStatus, integrityWarningsCount, integrityEvents, recordingDuration,
-      experienceLevel, totalExperienceYears, employmentHistory
+      experienceLevel, totalExperienceYears, employmentHistory, resumeId
     } = req.body;
 
     if (!role || !history || !Array.isArray(history) || history.length === 0) {
@@ -76,6 +77,7 @@ const completeInterview = async (req, res, next) => {
     const newInterview = await Interview.create({
       user: req.user.id,
       role,
+      resumeId: resumeId || null,
       transcript: evaluationData.transcript,
       overallScore: evaluationData.overallScore,
       categoryScores: evaluationData.categoryScores,

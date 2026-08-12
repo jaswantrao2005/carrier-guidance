@@ -10,6 +10,7 @@ interface InterviewRoomProps {
   jobDescriptionText?: string;
   companyName?: string;
   companyResearch?: any;
+  resumeId?: string;
   preCreatedStream?: MediaStream | null;
   recordingConsent?: boolean;
   experienceLevel?: 'fresher' | 'experienced';
@@ -101,6 +102,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   jobDescriptionText = '', 
   companyName = '', 
   companyResearch = null, 
+  resumeId = '',
   preCreatedStream = null,
   recordingConsent = false,
   experienceLevel = 'fresher',
@@ -376,6 +378,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         history,
         jobDescriptionText,
         companyResearch,
+        resumeId,
         experienceLevel,
         totalExperienceYears,
         employmentHistory
@@ -499,6 +502,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         jobDescriptionText,
         companyName,
         companyResearch,
+        resumeId,
         recordingConsent,
         recordingDuration: finalDuration,
         integrityStatus: finalIntegrityStatus,

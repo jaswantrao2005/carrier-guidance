@@ -26,6 +26,12 @@ export default function MockInterviewPage() {
   const [selectedRole, setSelectedRole] = useState<string>('Software Engineer');
   const [customRole, setCustomRole] = useState<string>('');
   
+  // Resume Selection state
+  const [resumes, setResumes] = useState<any[]>([]);
+  const [selectedResumeId, setSelectedResumeId] = useState<string>('');
+  const [isUploadingResume, setIsUploadingResume] = useState<boolean>(false);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+  
   // Job Description state
   const [jobDescriptionText, setJobDescriptionText] = useState<string>('');
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: number; status: 'uploading' | 'success' | 'error'; error?: string }>>([]);
@@ -93,6 +99,20 @@ export default function MockInterviewPage() {
       }
     };
     fetchHistory();
+
+    const fetchResumes = async () => {
+      if (!user) return;
+      try {
+        const response = await apiClient.get('resume/history');
+        if (response.data.success && response.data.resumes.length > 0) {
+          setResumes(response.data.resumes);
+          setSelectedResumeId(response.data.resumes[0]._id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch resume history:", err);
+      }
+    };
+    fetchResumes();
   }, [user]);
 
   // Clean up media stream on unmount
@@ -270,6 +290,41 @@ export default function MockInterviewPage() {
           prev.map(f => f.name === file.name ? { ...f, status: 'error', error: err.message || "Failed to parse text" } : f)
         );
       }
+    }
+  };
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert(`"${file.name}" exceeds the 5MB size limit.`);
+      return;
+    }
+
+    setIsUploadingResume(true);
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    try {
+      const response = await apiClient.post('resume/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.success) {
+        // Add to list and select it
+        setResumes(prev => [response.data.resume, ...prev]);
+        setSelectedResumeId(response.data.resume._id);
+        alert("Resume successfully uploaded and analyzed!");
+      } else {
+        throw new Error(response.data.message || "Failed to upload resume");
+      }
+    } catch (err: any) {
+      console.error("Resume upload failed:", err);
+      alert(err.response?.data?.error || err.response?.data?.message || err.message || "Failed to upload resume");
+    } finally {
+      setIsUploadingResume(false);
+      if (resumeInputRef.current) resumeInputRef.current.value = '';
     }
   };
 
@@ -583,6 +638,7 @@ export default function MockInterviewPage() {
           jobDescriptionText={jobDescriptionText}
           companyName={companyName}
           companyResearch={researchBrief}
+          resumeId={selectedResumeId}
           experienceLevel={experienceLevel}
           totalExperienceYears={experienceLevel === 'fresher' ? 0 : Number(totalExperienceYears)}
           employmentHistory={experienceLevel === 'fresher' ? [] : employmentHistory.map(e => ({ companyName: e.companyName, position: e.position, durationYears: Number(e.durationYears) }))}
@@ -662,6 +718,64 @@ export default function MockInterviewPage() {
                     />
                   </motion.div>
                 )}
+
+                {/* Resume Selection */}
+                <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Resume Context
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    Select a resume to provide deep context for your interview, or upload a new one.
+                  </p>
+                  
+                  {resumes.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                      {resumes.map(resume => (
+                        <div 
+                          key={resume._id}
+                          onClick={() => setSelectedResumeId(resume._id)}
+                          className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                            selectedResumeId === resume._id 
+                            ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-500 text-primary-700 dark:text-primary-300 shadow-sm shadow-primary-500/10' 
+                            : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedResumeId === resume._id ? 'border-primary-500' : 'border-slate-300 dark:border-slate-700'}`}>
+                            {selectedResumeId === resume._id && <div className="w-2 h-2 rounded-full bg-primary-500" />}
+                          </div>
+                          <div className="overflow-hidden flex-1">
+                            <p className="text-sm font-semibold truncate" title={resume.originalName}>{resume.originalName}</p>
+                            <p className="text-[10px] opacity-70">
+                              {new Date(resume.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div 
+                    onClick={() => !isUploadingResume && resumeInputRef.current?.click()}
+                    className={`border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center transition-colors bg-white/30 dark:bg-slate-950/20 ${isUploadingResume ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-primary-400 dark:hover:border-primary-600'}`}
+                  >
+                    {isUploadingResume ? (
+                      <Loader2 className="w-6 h-6 text-primary-500 mb-1.5 animate-spin" />
+                    ) : (
+                      <UploadCloud className="w-6 h-6 text-slate-400 mb-1.5" />
+                    )}
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      {isUploadingResume ? 'Uploading & Analyzing...' : 'Upload New Resume'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">Supports PDF (Max 5MB)</span>
+                    <input 
+                      type="file" 
+                      ref={resumeInputRef} 
+                      onChange={handleResumeUpload} 
+                      accept=".pdf"
+                      className="hidden" 
+                    />
+                  </div>
+                </div>
 
                 {/* Optional Job Description Input */}
                 <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">

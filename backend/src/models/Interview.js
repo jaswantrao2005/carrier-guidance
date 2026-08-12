@@ -11,6 +11,10 @@ const interviewSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    resumeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Resume'
+    },
     transcript: [
       {
         question: {
