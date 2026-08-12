@@ -11,6 +11,16 @@ const interviewSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    interviewType: {
+      type: String,
+      enum: [
+        'HR Interview', 'Technical Interview', 'Personal Interview (PI)',
+        'Managerial Interview', 'Behavioral Interview', 'Case Interview',
+        'Group Interview', 'Panel Interview', 'Coding / Programming Interview',
+        'Situational Interview', 'Final Interview', 'Overall Interview'
+      ],
+      default: 'Overall Interview'
+    },
     resumeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Resume'
@@ -132,7 +142,27 @@ const interviewSchema = new mongoose.Schema(
         position: String,
         durationYears: Number
       }
-    ]
+    ],
+    // Coding Interview Fields
+    codingData: {
+      language: { type: String, default: 'javascript' },
+      codingQuestions: [
+        {
+          questionText: String,
+          testCases: [
+            { input: String, expectedOutput: String }
+          ]
+        }
+      ],
+      codingSubmissions: [
+        {
+          code: String,
+          timestamp: Number,
+          passed: Boolean,
+          output: String
+        }
+      ]
+    }
   },
   {
     timestamps: true,

@@ -2,14 +2,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Volume2, Loader2, Play, Square, CheckCircle, AlertTriangle, Globe } from 'lucide-react';
+import { Mic, MicOff, Volume2, Loader2, Play, Square, CheckCircle, AlertTriangle, Globe, Code, PlayCircle } from 'lucide-react';
 import apiClient from '@/features/api/client';
+import Editor from '@monaco-editor/react';
 
 interface InterviewRoomProps {
   role: string;
   jobDescriptionText?: string;
   companyName?: string;
   companyResearch?: any;
+  interviewType?: string;
   resumeId?: string;
   preCreatedStream?: MediaStream | null;
   recordingConsent?: boolean;
@@ -102,6 +104,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   jobDescriptionText = '', 
   companyName = '', 
   companyResearch = null, 
+  interviewType = 'Overall Interview',
   resumeId = '',
   preCreatedStream = null,
   recordingConsent = false,
@@ -136,6 +139,14 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   
   // Multilingual Speech support
   const [spokenLanguage, setSpokenLanguage] = useState<string>('en-IN'); // defaults to Indian English / Multilingual understanding
+
+  // Coding Interview State
+  const isCodingMode = interviewType === 'Coding / Programming Interview';
+  const [code, setCode] = useState<string>('// Write your code here...\n');
+  const [codingLanguage, setCodingLanguage] = useState<string>('javascript');
+  const [codingOutput, setCodingOutput] = useState<string>('');
+  const [isRunningCode, setIsRunningCode] = useState<boolean>(false);
+  const [codingSubmissions, setCodingSubmissions] = useState<any[]>([]);
 
   const synthesisRef = useRef<SpeechSynthesis | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -465,6 +476,62 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     }
   };
 
+  const handleRunCode = async () => {
+    if (!code || isRunningCode) return;
+    setIsRunningCode(true);
+    setCodingOutput("Running tests...");
+    try {
+      const res = await apiClient.post('interview/code/run', {
+        language: codingLanguage,
+        code,
+        questionText: currentQuestion
+      });
+      if (res.data.success) {
+        setCodingOutput(res.data.data.output);
+        setCodingSubmissions([...codingSubmissions, {
+          code,
+          timestamp: Date.now(),
+          passed: res.data.data.passed,
+          output: res.data.data.output
+        }]);
+      } else {
+        setCodingOutput("Error running code.");
+      }
+    } catch (e) {
+      setCodingOutput("Error running code. Sandbox may be down.");
+    } finally {
+      setIsRunningCode(false);
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    if (!code || isRunningCode) return;
+    setIsRunningCode(true);
+    setCodingOutput("Submitting final solution...");
+    try {
+      const res = await apiClient.post('interview/code/submit', {
+        language: codingLanguage,
+        code,
+        questionText: currentQuestion
+      });
+      if (res.data.success) {
+        setCodingOutput(res.data.data.output);
+        setCodingSubmissions([...codingSubmissions, {
+          code,
+          timestamp: Date.now(),
+          passed: res.data.data.passed,
+          output: res.data.data.output
+        }]);
+        // After submission, candidate should stop answering verbally to move on
+        handleStopAnswer(); 
+      }
+    } catch (e) {
+      setCodingOutput("Error submitting code.");
+    } finally {
+      setIsRunningCode(false);
+    }
+  };
+
   const uploadRecording = async (interviewId: string) => {
     if (!mediaRecorderRef.current || recordedChunksRef.current.length === 0) return;
     
@@ -498,6 +565,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     try {
       const response = await apiClient.post('interview/complete', {
         role,
+        interviewType,
         history,
         jobDescriptionText,
         companyName,
@@ -510,7 +578,11 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         integrityEvents: integrityEventsRef.current,
         experienceLevel,
         totalExperienceYears,
-        employmentHistory
+        employmentHistory,
+        codingData: isCodingMode ? {
+          language: codingLanguage,
+          codingSubmissions
+        } : null
       });
 
       if (response.data.success) {
@@ -547,8 +619,15 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     { code: 'pa-IN', label: 'Punjabi (ਪੰਜਾਬੀ)' }
   ];
 
+  const containerClass = isCodingMode ? "mx-auto px-4 py-8 relative z-10 max-w-7xl" : "mx-auto px-4 py-8 relative z-10 max-w-3xl";
+  const gridClass = isCodingMode ? "grid grid-cols-1 lg:grid-cols-2 gap-8" : "";
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 relative z-10">
+    <div className={containerClass}>
+      <div className={gridClass}>
+        
+        {/* Left Column / Main View */}
+        <div className="flex flex-col relative">
       
       {/* Live Floating Camera Window */}
       {cameraStream && (
@@ -727,7 +806,73 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             </button>
           </div>
         </div>
+      </div>
+      </div>
+        
+      {/* Right Column / Code Editor (Only visible in Coding Mode) */}
+        {isCodingMode && (
+          <div className="flex flex-col h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
+              <div className="flex items-center gap-2">
+                <Code className="w-5 h-5 text-primary-500" />
+                <h3 className="font-bold text-slate-700 dark:text-slate-300">Code Workspace</h3>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={codingLanguage}
+                  onChange={(e) => setCodingLanguage(e.target.value)}
+                  className="bg-slate-200 dark:bg-slate-800 text-xs font-semibold px-3 py-1.5 rounded-lg border-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="javascript">JavaScript</option>
+                  <option value="python">Python</option>
+                  <option value="java">Java</option>
+                  <option value="cpp">C++</option>
+                </select>
+                <button
+                  onClick={handleRunCode}
+                  disabled={isRunningCode || status !== 'listening'}
+                  className="bg-slate-800 text-white dark:bg-slate-700 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-900 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <PlayCircle className="w-4 h-4" /> Run
+                </button>
+                <button
+                  onClick={handleSubmitCode}
+                  disabled={isRunningCode || status !== 'listening'}
+                  className="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <CheckCircle className="w-4 h-4" /> Submit
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 min-h-[400px]">
+              <Editor
+                height="100%"
+                language={codingLanguage}
+                theme="vs-dark"
+                value={code}
+                onChange={(val) => setCode(val || '')}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  padding: { top: 16 }
+                }}
+              />
+            </div>
 
+            {/* Output Console */}
+            <div className="h-48 bg-slate-950 text-slate-300 font-mono text-sm p-4 overflow-y-auto border-t border-slate-800">
+              <div className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Console Output</div>
+              {isRunningCode ? (
+                <div className="flex items-center gap-2 text-primary-400">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Running...
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap">{codingOutput || 'Run your code to see the output here.'}</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
     </div>

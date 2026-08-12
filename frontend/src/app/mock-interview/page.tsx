@@ -26,6 +26,9 @@ export default function MockInterviewPage() {
   const [selectedRole, setSelectedRole] = useState<string>('Software Engineer');
   const [customRole, setCustomRole] = useState<string>('');
   
+  // Interview Type state
+  const [interviewType, setInterviewType] = useState<string>('Overall Interview');
+  
   // Resume Selection state
   const [resumes, setResumes] = useState<any[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<string>('');
@@ -75,6 +78,21 @@ export default function MockInterviewPage() {
     'DevOps / Cloud',
     'Product Management',
     'Custom Role'
+  ];
+
+  const interviewTypes = [
+    'Overall Interview',
+    'HR Interview',
+    'Technical Interview',
+    'Personal Interview (PI)',
+    'Managerial Interview',
+    'Behavioral Interview',
+    'Case Interview',
+    'Group Interview',
+    'Panel Interview',
+    'Coding / Programming Interview',
+    'Situational Interview',
+    'Final Interview'
   ];
 
   // Route protection
@@ -635,6 +653,7 @@ export default function MockInterviewPage() {
       <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
         <InterviewRoom
           role={roleToUse}
+          interviewType={interviewType}
           jobDescriptionText={jobDescriptionText}
           companyName={companyName}
           companyResearch={researchBrief}
@@ -718,6 +737,29 @@ export default function MockInterviewPage() {
                     />
                   </motion.div>
                 )}
+
+                {/* Interview Type Selection */}
+                <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">
+                    What type of interview would you like to practice?
+                  </label>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {interviewTypes.map(typeOption => (
+                      <button
+                        key={typeOption}
+                        onClick={() => setInterviewType(typeOption)}
+                        className={`p-3 rounded-xl border text-xs font-semibold transition-all text-center ${
+                          interviewType === typeOption
+                            ? 'bg-primary-500 text-white border-primary-500 shadow-md shadow-primary-500/20'
+                            : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {typeOption}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Resume Selection */}
                 <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">

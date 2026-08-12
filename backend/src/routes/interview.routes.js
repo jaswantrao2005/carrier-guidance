@@ -8,7 +8,9 @@ const {
   getInterviewById,
   getCompanyResearchData,
   parseJobDescriptionFile,
-  uploadVideo
+  uploadVideo,
+  runCode,
+  submitCode
 } = require("../controllers/interview/interview.controller");
 const authMiddleware = require("../middlewares/auth.middleware");
 const videoUpload = require("../middlewares/video.middleware");
@@ -29,5 +31,7 @@ router.post("/research", getCompanyResearchData);
 router.post("/upload-jd", upload.single("file"), parseJobDescriptionFile);
 router.get("/:id", getInterviewById);
 router.post("/:id/recording", videoUpload.single("video"), uploadVideo);
+router.post("/code/run", runCode);
+router.post("/code/submit", submitCode);
 
 module.exports = router;

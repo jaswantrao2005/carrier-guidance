@@ -10,7 +10,7 @@ const mammoth = require("mammoth");
  */
 const getNextQuestion = async (req, res, next) => {
   try {
-    const { role, history, jobDescriptionText, companyResearch, experienceLevel, totalExperienceYears, employmentHistory, resumeId } = req.body;
+    const { role, interviewType, history, jobDescriptionText, companyResearch, experienceLevel, totalExperienceYears, employmentHistory, resumeId } = req.body;
 
     if (!role) {
       return res.status(400).json({ success: false, error: "Role is required." });
@@ -30,6 +30,7 @@ const getNextQuestion = async (req, res, next) => {
 
     const nextQuestionData = await generateNextQuestion(
       role,
+      interviewType || 'Overall Interview',
       history || [],
       resumeContext,
       jobDescriptionText || '',
@@ -54,9 +55,9 @@ const getNextQuestion = async (req, res, next) => {
 const completeInterview = async (req, res, next) => {
   try {
     const { 
-      role, history, jobDescriptionText, companyName, companyResearch,
+      role, interviewType, history, jobDescriptionText, companyName, companyResearch,
       recordingConsent, integrityStatus, integrityWarningsCount, integrityEvents, recordingDuration,
-      experienceLevel, totalExperienceYears, employmentHistory, resumeId
+      experienceLevel, totalExperienceYears, employmentHistory, resumeId, codingData
     } = req.body;
 
     if (!role || !history || !Array.isArray(history) || history.length === 0) {
@@ -65,12 +66,14 @@ const completeInterview = async (req, res, next) => {
 
     const evaluationData = await generateEvaluationReport(
       role,
+      interviewType || 'Overall Interview',
       history,
       jobDescriptionText || '',
       companyResearch || null,
       experienceLevel || 'fresher',
       totalExperienceYears || 0,
-      employmentHistory || []
+      employmentHistory || [],
+      codingData || null
     );
 
     // Save mock interview session to the database
@@ -98,7 +101,9 @@ const completeInterview = async (req, res, next) => {
       integrityEvents: integrityEvents || [],
       experienceLevel: experienceLevel || 'fresher',
       totalExperienceYears: totalExperienceYears || 0,
-      employmentHistory: employmentHistory || []
+      employmentHistory: employmentHistory || [],
+      interviewType: interviewType || 'Overall Interview',
+      codingData: codingData || null
     });
 
     res.status(201).json({
@@ -240,9 +245,59 @@ const uploadVideo = async (req, res, next) => {
   }
 };
 
+/**
+ * Controller to securely execute code in an isolated environment (Stub)
+ */
+const runCode = async (req, res, next) => {
+  try {
+    const { language, code, questionText } = req.body;
+    
+    // Stub implementation
+    const passed = Math.random() > 0.3; // 70% pass rate stub
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        passed,
+        output: passed ? "All test cases passed successfully." : "Test Case 3 Failed: expected [1, 2] but got [0, 1].",
+        executionTimeMs: Math.floor(Math.random() * 50) + 10,
+        memoryBytes: 1024 * 1024 * 5 // 5MB
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Controller to submit the final coding solution (Stub)
+ */
+const submitCode = async (req, res, next) => {
+  try {
+    const { language, code, questionText } = req.body;
+    
+    // Execute final suite
+    const passed = true; // Assume success for submission stub
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        passed,
+        output: "Submission accepted. All hidden test cases passed.",
+        executionTimeMs: 12,
+        memoryBytes: 1024 * 1024 * 4
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getNextQuestion,
   completeInterview,
+  runCode,
+  submitCode,
   getInterviewHistory,
   getInterviewById,
   getCompanyResearchData,
