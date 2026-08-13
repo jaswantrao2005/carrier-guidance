@@ -388,9 +388,9 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
                 <div className="px-5 pb-5 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-4">
                   <div>
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Your Answer</h4>
-                    <p className="text-sm text-slate-700 dark:text-slate-300 italic bg-white dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                      "{item.answer || "[No response transcripted]"}"
-                    </p>
+                    <div className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 bg-slate-900 text-slate-100 p-4 rounded-xl border border-slate-800 font-mono whitespace-pre-wrap leading-relaxed shadow-inner overflow-x-auto">
+                      {item.answer || "[No response transcripted]"}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

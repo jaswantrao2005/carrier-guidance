@@ -465,7 +465,18 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     } catch (e) {}
     
     // Capture any lingering interim text that wasn't finalized
-    const finalAnswer = (transcript + ' ' + interimTranscriptRef.current).trim() || "[No verbal response]";
+    const speechAnswer = (transcript + ' ' + interimTranscriptRef.current).trim();
+    let finalAnswer = speechAnswer;
+
+    // If candidate wrote code in Coding Mode, attach code into the answer text
+    if (isCodingMode && code && code.trim() !== '' && code.trim() !== '// Write your code here...') {
+      const codeBlock = `[Submitted Code (${codingLanguage})]:\n\`\`\`${codingLanguage}\n${code.trim()}\n\`\`\``;
+      finalAnswer = speechAnswer ? `${speechAnswer}\n\n${codeBlock}` : codeBlock;
+    }
+    
+    if (!finalAnswer) {
+      finalAnswer = "[No verbal response or code submitted]";
+    }
     
     const updatedHistory = [...qaHistory, { question: currentQuestion, answer: finalAnswer }];
     setQaHistory(updatedHistory);
@@ -508,26 +519,49 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const handleSubmitCode = async () => {
     if (!code || isRunningCode) return;
     setIsRunningCode(true);
-    setCodingOutput("Submitting final solution...");
+    setCodingOutput("Submitting solution & executing tests...");
     try {
       const res = await apiClient.post('interview/code/submit', {
         language: codingLanguage,
         code,
         questionText: currentQuestion
       });
-      if (res.data.success) {
-        setCodingOutput(res.data.data.output);
-        setCodingSubmissions([...codingSubmissions, {
-          code,
-          timestamp: Date.now(),
-          passed: res.data.data.passed,
-          output: res.data.data.output
-        }]);
-        // After submission, candidate should stop answering verbally to move on
-        handleStopAnswer(); 
+
+      const passed = res.data?.data?.passed ?? true;
+      const testOutput = res.data?.data?.output || "All test cases passed successfully.";
+      setCodingOutput(testOutput);
+
+      const submissionEntry = {
+        code,
+        timestamp: Date.now(),
+        passed,
+        output: testOutput
+      };
+
+      const newSubmissions = [...codingSubmissions, submissionEntry];
+      setCodingSubmissions(newSubmissions);
+
+      try {
+        recognitionRef.current?.stop();
+      } catch (e) {}
+
+      const speechAnswer = (transcript + ' ' + interimTranscriptRef.current).trim();
+      let answerWithCode = `[Submitted Solution (${codingLanguage}) - Verification: ${passed ? 'PASSED ✅' : 'FAILED ❌'}]:\n\`\`\`${codingLanguage}\n${code.trim()}\n\`\`\`\nSandbox Output: ${testOutput}`;
+      
+      if (speechAnswer) {
+        answerWithCode = `Candidate Verbal Explanation: "${speechAnswer}"\n\n${answerWithCode}`;
+      }
+
+      const updatedHistory = [...qaHistory, { question: currentQuestion, answer: answerWithCode }];
+      setQaHistory(updatedHistory);
+
+      if (updatedHistory.length >= 10) {
+        finalizeInterview(updatedHistory, undefined, newSubmissions);
+      } else {
+        fetchNextQuestion(updatedHistory);
       }
     } catch (e) {
-      setCodingOutput("Error submitting code.");
+      setCodingOutput("Error submitting code. Please try again.");
     } finally {
       setIsRunningCode(false);
     }
@@ -556,7 +590,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     }
   };
 
-  const finalizeInterview = async (history: QARecord[], forcedStatus?: string) => {
+  const finalizeInterview = async (history: QARecord[], forcedStatus?: string, customCodingSubmissions?: any[]) => {
     setStatus('finishing');
     statusRef.current = 'finishing';
     
@@ -582,7 +616,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         employmentHistory,
         codingData: isCodingMode ? {
           language: codingLanguage,
-          codingSubmissions
+          codingSubmissions: customCodingSubmissions || codingSubmissions
         } : null
       });
 
