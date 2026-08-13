@@ -369,6 +369,8 @@ export default function MockInterviewPage() {
       <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
         <InterviewRoom
           role={roleToUse}
+          interviewType={interviewType}
+          resumeId={selectedResumeId}
           jobDescriptionText={jobDescriptionText}
           companyName={companyName}
           companyResearch={researchBrief}

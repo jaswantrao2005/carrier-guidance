@@ -49,7 +49,17 @@ async function generateNextQuestion(role, interviewType = 'Overall Interview', h
     } else if (interviewType === 'Case Interview') {
       phaseInstruction = `This is a Case Interview. Give the candidate a realistic business/technical scenario or problem to solve. Evaluate their problem decomposition and logical reasoning. Follow up on their previous answer to dig deeper into their case solution.`;
     } else if (interviewType === 'Coding / Programming Interview') {
-      phaseInstruction = `This is a Coding/Programming Interview. Ask algorithm, data structure (DSA), or coding logic questions. If this is the first question, give them a problem to code. If they just submitted code, ask them to explain their space/time complexity or why they chose their approach.`;
+      if (questionCount === 0) {
+        phaseInstruction = `MANDATORY INSTRUCTION: Present a clear, complete Data Structures & Algorithms (DSA) or Practical Coding Problem right away for the candidate to solve in the Code Workspace on their screen.
+Formulate a complete coding challenge suitable for a ${role} (${experienceLevel}).
+Include:
+1. Problem Title & Clear Description
+2. Example Input & Expected Output
+3. Constraints (e.g. Time/Space complexity targets or input bounds)
+Instruct the candidate to write their code in the Code Workspace on the right side of their screen and click Run/Submit when ready.`;
+      } else {
+        phaseInstruction = `MANDATORY INSTRUCTION: Review the candidate's previous code submission or verbal response. Either present a follow-up DSA coding problem, ask them to optimize their solution's time & space complexity (O(N), O(1)), or ask how they would handle edge cases.`;
+      }
     } else if (interviewType === 'Situational Interview') {
       phaseInstruction = `This is a Situational Interview. Give the candidate hypothetical workplace emergencies or difficult situations relevant to a ${role}. Ask them what they would do.`;
     } else if (interviewType === 'Final Interview') {
@@ -83,8 +93,12 @@ async function generateNextQuestion(role, interviewType = 'Overall Interview', h
       phaseInstruction += `\n${speakerPrefix}`;
     }
 
-    const systemPrompt = `You are a professional, senior tech interviewer at an elite company.
+    let systemPrompt = `You are a professional, senior tech interviewer at an elite company.
 Your goal is to conduct a realistic mock interview for the role of: "${role}".`;
+
+    if (interviewType === 'Coding / Programming Interview') {
+      systemPrompt = `You are a strict, senior Technical Coding & DSA Interviewer conducting a Coding/Programming Interview for the role of: "${role}". Your goal is to evaluate the candidate's Data Structures & Algorithms (DSA), problem-solving ability, and coding proficiency. YOU MUST ASK CONCRETE CODING / DSA PROBLEMS (e.g. Arrays, Strings, Two Pointers, Sliding Window, Hash Tables, Trees, Graphs, Dynamic Programming, Recursion, Sorting, Stacks/Queues). DO NOT ask HR, warm-up, or general introductory questions like "Tell me about yourself". Jump straight into asking a coding problem statement!`;
+    }
 
     const prompt = `
 Follow this phase instruction for the next question:
@@ -94,13 +108,13 @@ Conversation History so far:
 ${history.map((h, i) => `Q${i + 1}: ${h.question}\nA${i + 1}: ${h.answer || "[No Answer]"}`).join("\n\n")}
 
 INSTRUCTIONS:
-- Generate ONE clear, concise question at a time.
+- Generate ONE clear, concise question/challenge at a time.
 - Be conversational, realistic, and direct.
-- React to the candidate's last answer. If they gave a weak or vague answer, challenge them or ask for clarification.
+- React to the candidate's last answer or code submission.
 - Return ONLY a valid JSON object with no markdown syntax wrappers, matching this format:
 {
-  "question": "The question string",
-  "category": "Introduction | Background | Resume | JobDescription | Technical | CompanySpecific | Behavioral | Closing",
+  "question": "The question or coding problem statement string",
+  "category": "Coding | Technical | Introduction | Background | Resume | JobDescription | CompanySpecific | Behavioral | Closing",
   "difficulty": "Easy | Intermediate | Advanced"
 }
 `;

@@ -386,6 +386,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     try {
       const response = await apiClient.post('interview/next-question', {
         role,
+        interviewType,
         history,
         jobDescriptionText,
         companyResearch,
