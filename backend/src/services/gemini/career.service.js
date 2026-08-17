@@ -4,7 +4,7 @@ const groq = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null;
 
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_MODEL = "qwen/qwen3.6-27b";
 
 function normalizeAnalysisPayload(payload) {
   if (!payload || typeof payload !== "object") {
@@ -79,9 +79,9 @@ async function analyzeResume(resumeText) {
       throw new Error("GROQ_API_KEY is not configured");
     }
 
-    const systemPrompt = "You are an expert AI Career Advisor.";
+    const systemPrompt = "You are an expert AI Career Advisor. You must output a valid JSON object matching the requested schema. Do not include markdown code blocks, backticks, introduction, or text outside the JSON object. Output raw JSON only.";
     const prompt = `
-Analyze the following resume and return valid JSON only with these exact keys:
+Analyze the following resume and return valid, raw JSON only with these exact keys (do not wrap in backticks or markdown):
 {
   "candidateSummary": "string",
   "technicalSkills": ["string"],
@@ -109,10 +109,16 @@ ${resumeText}
       ],
       model: GROQ_MODEL,
       temperature: 0.2,
-      response_format: { type: "json_object" }
+      max_tokens: 2048,
+      reasoning_format: "hidden"
     });
 
     const responseText = chatCompletion.choices[0]?.message?.content;
+    const fs = require('fs');
+    fs.writeFileSync('rawResponse.txt', responseText || '');
+    console.log("FINISH REASON:", chatCompletion.choices[0]?.finish_reason);
+    console.log("USAGE:", chatCompletion.usage);
+    console.log("RAW RESPONSE:", responseText);
     const parsedResponse = parseGroqResponse(responseText);
 
     return normalizeAnalysisPayload(parsedResponse || responseText);
