@@ -1,7 +1,7 @@
 const Groq = require("groq-sdk");
 
 // Use the versatile model as requested
-const GROQ_MODEL = "qwen/qwen3.6-27b";
+const GROQ_MODEL = "openai/gpt-oss-120b";
 
 /**
  * Generates a chatbot response using Groq, giving it context of the user's resume.
