@@ -1,11 +1,7 @@
-const Groq = require("groq-sdk");
+const { callGroqWithRotation } = require("../groq/groqPool");
 
-const groq = process.env.GROQ_API_KEY
-  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
-  : null;
-
-// Using official Groq production model
 const GROQ_MODEL = "openai/gpt-oss-120b";
+
 
 function normalizeAnalysisPayload(payload) {
   if (!payload || typeof payload !== "object") {
@@ -74,14 +70,9 @@ function parseGroqResponse(text) {
 
 async function analyzeResume(resumeText) {
   try {
-    if (!groq) {
-      throw new Error("GROQ_API_KEY is not configured in .env");
-    }
-
     const systemPrompt = "You are an expert AI Career Advisor and ATS Evaluator. You must output a valid JSON object matching the requested schema. Output raw JSON only.";
-    const prompt = `
+    const prompt = `:
 Analyze the following resume and return valid JSON only with these exact keys:
-{
   "candidateSummary": "string",
   "technicalSkills": ["string"],
   "softSkills": ["string"],
@@ -94,29 +85,29 @@ Analyze the following resume and return valid JSON only with these exact keys:
   "education": ["string"],
   "projects": ["string"],
   "workExperience": ["string"]
-}
 
 Resume:
 ${resumeText}
-`;
+` ;
 
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: prompt }
-      ],
-      model: GROQ_MODEL,
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 2048
+    // Automatically executes with Groq multi-key pool rotation
+    const responseText = await callGroqWithRotation(async (groqInstance) => {
+      const chatCompletion = await groqInstance.chat.completions.create({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        model: GROQ_MODEL,
+        temperature: 0.2,
+        max_tokens: 2048
+      });
+      return chatCompletion.choices[0]?.message?.content;
     });
 
-    const responseText = chatCompletion.choices[0]?.message?.content;
     const parsedResponse = parseGroqResponse(responseText);
-
     return normalizeAnalysisPayload(parsedResponse);
   } catch (error) {
-    console.error("analyzeResume Error:", error);
+    console.error('analyzeResume Error:', error);
     return normalizeAnalysisPayload(null);
   }
 }

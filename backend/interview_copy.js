@@ -1,6 +1,8 @@
-const { callGroqWithRotation } = require("../groq/groqPool");
+const Groq = require("groq-sdk");
 
-
+const groq = process.env.GROQ_API_KEY
+  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
+  : null;
 
 const GROQ_MODEL = "openai/gpt-oss-120b";
 
@@ -23,7 +25,9 @@ function parseJSONResponse(text) {
  */
 async function generateNextQuestion(role, interviewType = 'Overall Interview', history = [], resumeContext = null, jobDescriptionText = '', companyResearch = null, experienceLevel = 'fresher', totalExperienceYears = 0, employmentHistory = []) {
   try {
-    
+    if (!groq) {
+      throw new Error("GROQ_API_KEY is not configured");
+    }
 
     const questionCount = history.length;
     
@@ -115,8 +119,7 @@ INSTRUCTIONS:
 }
 `;
 
-    const chatCompletion = await callGroqWithRotation(async (groqInstance) => {
-      return await groqInstance.chat.completions.create({
+    const chatCompletion = await groq.chat.completions.create({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt }
@@ -124,7 +127,6 @@ INSTRUCTIONS:
       model: GROQ_MODEL,
       temperature: 0.7,
       response_format: { type: "json_object" }
-      });
     });
 
     const responseText = chatCompletion.choices[0]?.message?.content;
@@ -146,7 +148,9 @@ INSTRUCTIONS:
  */
 async function generateEvaluationReport(role, interviewType = 'Overall Interview', history, jobDescriptionText = '', companyResearch = null, experienceLevel = 'fresher', totalExperienceYears = 0, employmentHistory = [], codingData = null) {
   try {
-    
+    if (!groq) {
+      throw new Error("GROQ_API_KEY is not configured");
+    }
 
     const systemPrompt = "You are an expert technical interviewer and career coach.";
 
@@ -219,8 +223,7 @@ Return a valid JSON object with the following keys and data types only:
 }
 `;
 
-    const chatCompletion = await callGroqWithRotation(async (groqInstance) => {
-      return await groqInstance.chat.completions.create({
+    const chatCompletion = await groq.chat.completions.create({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt }
@@ -228,7 +231,6 @@ Return a valid JSON object with the following keys and data types only:
       model: GROQ_MODEL,
       temperature: 0.7,
       response_format: { type: "json_object" }
-      });
     });
 
     const responseText = chatCompletion.choices[0]?.message?.content;

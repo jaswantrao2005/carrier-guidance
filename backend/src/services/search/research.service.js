@@ -62,7 +62,8 @@ Return ONLY a valid JSON object matching the following structure:
 }
 `;
 
-    const chatCompletion = await groq.chat.completions.create({
+    const chatCompletion = await callGroqWithRotation(async (groqInstance) => {
+      return await groqInstance.chat.completions.create({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt }
@@ -70,6 +71,7 @@ Return ONLY a valid JSON object matching the following structure:
       model: GROQ_MODEL,
       temperature: 0.2,
       response_format: { type: "json_object" }
+      });
     });
 
     const responseText = chatCompletion.choices[0]?.message?.content;

@@ -1,4 +1,4 @@
-const Groq = require("groq-sdk");
+const { callGroqWithRotation } = require("./groqPool");
 
 // Use the versatile model as requested
 const GROQ_MODEL = "openai/gpt-oss-120b";
@@ -11,13 +11,9 @@ const GROQ_MODEL = "openai/gpt-oss-120b";
  * @param {Object} resumeAnalysis - The full analysis object from the user's latest resume
  */
 const generateRoadmapResponse = async (history, userQuery, resumeAnalysis) => {
-  const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-  });
+  
 
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY is not configured in the environment variables.");
-  }
+  
 
   const systemPrompt = `You are an elite, highly experienced career mentor and tech advisor. 
 Your goal is to help the user achieve their desired career role.
@@ -56,11 +52,13 @@ INSTRUCTIONS:
   ];
 
   try {
-    const chatCompletion = await groq.chat.completions.create({
+    const chatCompletion = await callGroqWithRotation(async (groqInstance) => {
+      return await groqInstance.chat.completions.create({
       messages: messages,
       model: GROQ_MODEL,
       temperature: 0.7,
       max_tokens: 2048,
+      });
     });
 
     return chatCompletion.choices[0]?.message?.content || "I couldn't generate a response.";
