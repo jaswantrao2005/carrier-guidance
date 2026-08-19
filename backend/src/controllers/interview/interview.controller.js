@@ -248,27 +248,77 @@ const uploadVideo = async (req, res, next) => {
 /**
  * Controller to securely execute code in an isolated environment (Stub)
  */
+
+const executeOnPiston = async (language, code) => {
+  const runtimes = {
+    javascript: { language: 'javascript', version: '18.15.0' },
+    python: { language: 'python', version: '3.10.0' },
+    java: { language: 'java', version: '15.0.2' },
+    cpp: { language: 'c++', version: '10.2.0' },
+  };
+
+  const runtime = runtimes[language];
+  if (!runtime) {
+    throw new Error("Unsupported language: " + language);
+  }
+
+  const payload = {
+    language: runtime.language,
+    version: runtime.version,
+    files: [{ content: code }]
+  };
+
+  try {
+    const response = await fetch('https://emkc.org/api/v2/piston/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    
+    if (data.compile && data.compile.code !== 0) {
+      return { passed: false, output: data.compile.stderr || data.compile.output || "Compilation Error" };
+    }
+    
+    if (data.run && data.run.code !== 0) {
+      return { passed: false, output: data.run.stderr || data.run.output || "Runtime Error" };
+    }
+    
+    if (data.run && data.run.output !== undefined) {
+      return { passed: true, output: data.run.output };
+    }
+    
+    return { passed: false, output: "Unknown execution error. Data: " + JSON.stringify(data) };
+  } catch (error) {
+    return { passed: false, output: "Failed to connect to Piston API: " + error.message };
+  }
+};
+
+
 const runCode = async (req, res, next) => {
   try {
     const { language, code, questionText } = req.body;
     
-    // Stub implementation
-    const passed = Math.random() > 0.3; // 70% pass rate stub
+    if (!code) {
+      return res.status(400).json({ success: false, message: "No code provided" });
+    }
+    
+    const result = await executeOnPiston(language, code);
     
     res.status(200).json({
       success: true,
       data: {
-        passed,
-        output: passed ? "All test cases passed successfully." : "Test Case 3 Failed: expected [1, 2] but got [0, 1].",
-        executionTimeMs: Math.floor(Math.random() * 50) + 10,
-        memoryBytes: 1024 * 1024 * 5 // 5MB
+        passed: result.passed,
+        output: result.output || "Execution completed (no output)",
+        executionTimeMs: 0,
+        memoryBytes: 0
       }
     });
   } catch (error) {
     next(error);
   }
 };
-
 /**
  * Controller to submit the final coding solution (Stub)
  */
@@ -276,23 +326,25 @@ const submitCode = async (req, res, next) => {
   try {
     const { language, code, questionText } = req.body;
     
-    // Execute final suite
-    const passed = true; // Assume success for submission stub
+    if (!code) {
+      return res.status(400).json({ success: false, message: "No code provided" });
+    }
+    
+    const result = await executeOnPiston(language, code);
     
     res.status(200).json({
       success: true,
       data: {
-        passed,
-        output: "Submission accepted. All hidden test cases passed.",
-        executionTimeMs: 12,
-        memoryBytes: 1024 * 1024 * 4
+        passed: result.passed,
+        output: result.output + (result.passed ? "\n\n[Submission Accepted - Saving to AI Report]" : "\n\n[Submission Failed]"),
+        executionTimeMs: 0,
+        memoryBytes: 0
       }
     });
   } catch (error) {
     next(error);
   }
 };
-
 module.exports = {
   getNextQuestion,
   completeInterview,
