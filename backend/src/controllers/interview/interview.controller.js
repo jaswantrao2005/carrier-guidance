@@ -249,49 +249,60 @@ const uploadVideo = async (req, res, next) => {
  * Controller to securely execute code in an isolated environment (Stub)
  */
 
-const executeOnPiston = async (language, code) => {
-  const runtimes = {
-    javascript: { language: 'javascript', version: '18.15.0' },
-    python: { language: 'python', version: '3.10.0' },
-    java: { language: 'java', version: '15.0.2' },
-    cpp: { language: 'c++', version: '10.2.0' },
+
+const executeOnJudge0 = async (language, code) => {
+  // Judge0 Language IDs mapping
+  const languageIds = {
+    javascript: 93, // Node.js 18.15.0
+    python: 71,     // Python 3.11.2
+    java: 62,       // Java (OpenJDK 13.0.1)
+    cpp: 54         // C++ (GCC 9.2.0)
   };
 
-  const runtime = runtimes[language];
-  if (!runtime) {
+  const languageId = languageIds[language];
+  if (!languageId) {
     throw new Error("Unsupported language: " + language);
   }
 
+  const apiKey = process.env.JUDGE0_API_KEY;
+  if (!apiKey) {
+    return { passed: false, output: "Error: JUDGE0_API_KEY is missing in .env file." };
+  }
+
   const payload = {
-    language: runtime.language,
-    version: runtime.version,
-    files: [{ content: code }]
+    language_id: languageId,
+    source_code: code,
+    stdin: ""
   };
 
   try {
-    const response = await fetch('https://emkc.org/api/v2/piston/execute', {
+    // 1. Submit code to Judge0
+    const submitResponse = await fetch('https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+      },
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
-    
-    if (data.compile && data.compile.code !== 0) {
-      return { passed: false, output: data.compile.stderr || data.compile.output || "Compilation Error" };
+    const data = await submitResponse.json();
+
+    if (data.message && data.message.includes("You have exceeded")) {
+      return { passed: false, output: "API Error: You have exceeded the free RapidAPI daily quota (50 requests/day)." };
     }
-    
-    if (data.run && data.run.code !== 0) {
-      return { passed: false, output: data.run.stderr || data.run.output || "Runtime Error" };
+
+    // Status 3 is "Accepted" (Code executed successfully)
+    if (data.status && data.status.id === 3) {
+      return { passed: true, output: data.stdout || "Execution completed (no output)" };
+    } else {
+      // It failed (Compilation error, runtime error, etc.)
+      const errorOutput = data.compile_output || data.stderr || data.message || (data.status ? data.status.description : "Unknown Error");
+      return { passed: false, output: errorOutput };
     }
-    
-    if (data.run && data.run.output !== undefined) {
-      return { passed: true, output: data.run.output };
-    }
-    
-    return { passed: false, output: "Unknown execution error. Data: " + JSON.stringify(data) };
   } catch (error) {
-    return { passed: false, output: "Failed to connect to Piston API: " + error.message };
+    return { passed: false, output: "Failed to connect to Judge0 API: " + error.message };
   }
 };
 
@@ -304,7 +315,7 @@ const runCode = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "No code provided" });
     }
     
-    const result = await executeOnPiston(language, code);
+    const result = await executeOnJudge0(language, code);
     
     res.status(200).json({
       success: true,
@@ -330,7 +341,7 @@ const submitCode = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "No code provided" });
     }
     
-    const result = await executeOnPiston(language, code);
+    const result = await executeOnJudge0(language, code);
     
     res.status(200).json({
       success: true,
