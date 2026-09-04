@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useMicVAD } from '@ricky0123/vad-react';
 import { Mic, MicOff, Volume2, Loader2, Play, Square, CheckCircle, AlertTriangle, Globe, Code, PlayCircle } from 'lucide-react';
 import apiClient from '@/features/api/client';
 import Editor from '@monaco-editor/react';
@@ -22,6 +21,20 @@ interface InterviewRoomProps {
   onFinish: (reportId: string) => void;
   onCancel: () => void;
 }
+
+const languageOptions = [
+  { code: 'en-IN', label: 'English (Indian / British / US / All Accents)' },
+  { code: 'hi-IN', label: 'Hindi (हिंदी)' },
+  { code: 'or-IN', label: 'Odia (ଓଡ଼ିଆ)' },
+  { code: 'bn-IN', label: 'Bengali (বাংলা)' },
+  { code: 'mr-IN', label: 'Marathi (मराठी)' },
+  { code: 'ta-IN', label: 'Tamil (தமிழ்)' },
+  { code: 'te-IN', label: 'Telugu (తెలుగు)' },
+  { code: 'kn-IN', label: 'Kannada (ಕನ್ನಡ)' },
+  { code: 'ml-IN', label: 'Malayalam (മലയാളം)' },
+  { code: 'gu-IN', label: 'Gujarati (ગુજરાતી)' },
+  { code: 'pa-IN', label: 'Punjabi (ਪੰਜਾਬੀ)' }
+];
 
 interface QARecord {
   question: string;
@@ -126,12 +139,12 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [interimTranscript, setInterimTranscript] = useState<string>('');
   const [timer, setTimer] = useState<number>(0);
   const [micError, setMicError] = useState<string | null>(null);
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   
   // Integrity & Recording States
   const [warningsCount, setWarningsCount] = useState<number>(0);
   const [faceWarnings, setFaceWarnings] = useState<number>(0);
   const [tabWarnings, setTabWarnings] = useState<number>(0);
-  const [audioWarnings, setAudioWarnings] = useState<number>(0);
   const [recentWarning, setRecentWarning] = useState<string | null>(null);
   const integrityEventsRef = useRef<any[]>([]);
   const lastEventTimeRef = useRef<{ [key: string]: number }>({});
@@ -139,7 +152,6 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const recordedChunksRef = useRef<Blob[]>([]);
   const interviewStartTimeRef = useRef<number>(Date.now());
   const [isRecording, setIsRecording] = useState<boolean>(false);
-  const integrityIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Multilingual Speech support
   const [spokenLanguage, setSpokenLanguage] = useState<string>('en-IN'); // defaults to Indian English / Multilingual understanding
@@ -193,26 +205,23 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         }
       }
 
-      // Initialize FaceDetector Integrity Monitor
-      if ('FaceDetector' in window) {
-        try {
-          const faceDetector = new (window as any).FaceDetector({ maxDetectedFaces: 5, fastMode: true });
-          integrityIntervalRef.current = setInterval(async () => {
-            if (videoRef.current && status !== 'idle' && status !== 'finishing') {
-              try {
-                const faces = await faceDetector.detect(videoRef.current);
-                handleIntegrityCheck(faces.length);
-              } catch (e) {}
-            }
-          }, 3000);
-        } catch (e) {
-          console.warn("FaceDetector failed to initialize:", e);
-        }
-      }
+      // NOTE: Face-presence monitoring was removed, not repaired.
+      //
+      // It never ran: the interval closed over `status` from an effect with deps
+      // [preCreatedStream, recordingConsent], so the guard `status !== 'idle'` was
+      // frozen false for the whole session and detect() was never called once.
+      //
+      // It was NOT fixed, because fixing it would switch on a measurably biased signal.
+      // Peer-reviewed measurement of automated proctoring found "missing from frame"
+      // firing 4.79x per assessment for darker-skinned candidates vs 0.83x for lighter,
+      // with video review confirming NO difference in actual behaviour. The FaceDetector
+      // API is also non-standard (removed from MDN compat data, Chrome-only, flag-gated).
+      //
+      // If presence detection is ever needed: run MediaPipe server-side on the real
+      // media stream, surface it to a human reviewer, and never let it affect a score.
     }
     
     return () => {
-      if (integrityIntervalRef.current) clearInterval(integrityIntervalRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
@@ -231,40 +240,28 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     
     setWarningsCount(prev => prev + 1);
     
+    // NOTE: Integrity events are recorded as UNVERIFIED HINTS for human review only.
+    // Auto-termination was removed deliberately: the thresholds (2 tab-switches) failed
+    // honest candidates on an OS notification or a second monitor, while anyone actually
+    // cheating bypasses client-side checks entirely. Harsh on the honest, useless against
+    // the dishonest. Do not reintroduce without server-side verification + human review.
     if (type === 'Multiple Persons') {
-       setFaceWarnings(prev => {
-          const newCount = prev + 1;
-          if (newCount >= 3 && statusRef.current !== 'finishing') forceTerminateInterview();
-          return newCount;
-       });
+       setFaceWarnings(prev => prev + 1);
     } else if (type === 'Tab Switched') {
-       setTabWarnings(prev => {
-          const newCount = prev + 1;
-          if (newCount >= 2 && statusRef.current !== 'finishing') forceTerminateInterview();
-          return newCount;
-       });
-    } else if (type === 'Background Human Voice') {
-       setAudioWarnings(prev => {
-          const newCount = prev + 1;
-          if (newCount >= 5 && statusRef.current !== 'finishing') forceTerminateInterview();
-          return newCount;
-       });
+       setTabWarnings(prev => prev + 1);
     }
 
     setRecentWarning(description);
     setTimeout(() => setRecentWarning(null), 5000);
   };
 
-  
-  // VAD Implementation
-  const vad = useMicVAD({
-    startOnLoad: true,
-    onSpeechStart: () => {
-      if (statusRef.current === 'speaking' || statusRef.current === 'processing') {
-         addIntegrityEvent('Background Human Voice', 'Human voice detected while interviewer is speaking/processing.', 'Medium');
-      }
-    }
-  });
+  // NOTE: Voice-activity detection was removed.
+  // It flagged the candidate for speaking while the interviewer spoke -- i.e. for
+  // INTERRUPTING, which is normal conversation and the exact behaviour a good voice
+  // system supports as barge-in. It also opened a second concurrent getUserMedia
+  // stream that was never released, leaving the mic indicator on after the interview.
+  // When barge-in lands (server-side VAD), speaking over the AI should CANCEL the
+  // interviewer's speech, never penalise the candidate.
 
   // Browser Proctoring Implementation
   useEffect(() => {
@@ -281,7 +278,11 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     };
 
     const preventCopyPaste = (e: any) => {
-      if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      // Monaco renders into neither INPUT nor TEXTAREA, so the original check blocked
+      // copy/paste INSIDE the code editor -- a normal, necessary part of writing code.
+      const el = e.target as HTMLElement;
+      const inEditor = typeof el?.closest === 'function' && el.closest('.monaco-editor');
+      if (el?.tagName !== 'INPUT' && el?.tagName !== 'TEXTAREA' && !inEditor) {
         e.preventDefault();
         addIntegrityEvent('Copy/Paste Blocked', 'Copying and pasting is not allowed to prevent cheating.', 'Medium');
       }
@@ -303,24 +304,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     };
   }, []);
 
-  const handleIntegrityCheck = (facesCount: number) => {
-    if (facesCount === 0) {
-      addIntegrityEvent('Candidate Left Frame', 'No face detected in the camera frame.', 'High');
-    } else if (facesCount > 1) {
-      addIntegrityEvent('Multiple Persons', 'Secondary person detected in the frame.', 'High');
-    }
-  };
-
-  const forceTerminateInterview = () => {
-    try { recognitionRef.current?.stop(); } catch (e) {}
-    try { synthesisRef.current?.cancel(); } catch (e) {}
-    setStatus('finishing');
-    statusRef.current = 'finishing';
-    const warningMsg = "Interview terminated automatically due to repeated integrity warnings.";
-    setRecentWarning(warningMsg);
-    // Proceed to finalize with whatever history exists
-    finalizeInterview(qaHistory, 'Terminated');
-  };
+  // handleIntegrityCheck() and forceTerminateInterview() removed -- see the notes at the
+  // FaceDetector and warning-counter sites above. Nothing auto-ends an interview now.
 
   // Sync spoken language changes directly to the speech recognition instance
   useEffect(() => {
@@ -481,9 +466,23 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     }
   };
 
-  const speakQuestion = (text: string) => {
+  // getVoices() is asynchronous: in Chrome it returns [] until 'voiceschanged' fires.
+  const loadVoices = (): Promise<SpeechSynthesisVoice[]> =>
+    new Promise((resolve) => {
+      const existing = window.speechSynthesis.getVoices();
+      if (existing.length) return resolve(existing);
+      const onChange = () => {
+        window.speechSynthesis.removeEventListener('voiceschanged', onChange);
+        resolve(window.speechSynthesis.getVoices());
+      };
+      window.speechSynthesis.addEventListener('voiceschanged', onChange);
+      // Don't hang forever if the event never fires.
+      setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1500);
+    });
+
+  const speakQuestion = async (text: string) => {
     if (!synthesisRef.current) return;
-    
+
     // Ensure mic is off when speaking
     try {
       recognitionRef.current?.stop();
@@ -492,7 +491,29 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     synthesisRef.current.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utteranceRef.current = utterance;
-    
+
+    // Speak the question in the language the candidate selected. Previously .lang was
+    // never set, so a candidate who chose Hindi still heard the question in the OS
+    // default (usually en-US) while being expected to answer in Hindi.
+    const lang = spokenLanguageRef.current;
+    utterance.lang = lang;
+    utterance.rate = 1.0;
+
+    const voices = await loadVoices();
+    const match =
+      voices.find((v) => v.lang === lang) ||
+      voices.find((v) => v.lang.replace('_', '-').startsWith(lang.split('-')[0]));
+    if (match) {
+      utterance.voice = match;
+      setVoiceNotice(null);
+    } else if (!lang.startsWith('en')) {
+      // Honest degradation: tell the candidate rather than silently reading it in English.
+      const label = languageOptions.find((o) => o.code === lang)?.label ?? lang;
+      setVoiceNotice(
+        `No ${label} voice is installed in this browser, so the question is read in the default voice. Your spoken answer is still understood in ${label}.`
+      );
+    }
+
     utterance.onstart = () => {
       setStatus('speaking');
       statusRef.current = 'speaking';
@@ -705,20 +726,6 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   };
 
   // Supported languages list
-  const languageOptions = [
-    { code: 'en-IN', label: 'English (Indian / British / US / All Accents)' },
-    { code: 'hi-IN', label: 'Hindi (हिंदी)' },
-    { code: 'or-IN', label: 'Odia (ଓଡ଼ିଆ)' },
-    { code: 'bn-IN', label: 'Bengali (বাংলা)' },
-    { code: 'mr-IN', label: 'Marathi (मराठी)' },
-    { code: 'ta-IN', label: 'Tamil (தமிழ்)' },
-    { code: 'te-IN', label: 'Telugu (తెలుగు)' },
-    { code: 'kn-IN', label: 'Kannada (ಕನ್ನಡ)' },
-    { code: 'ml-IN', label: 'Malayalam (മലയാളം)' },
-    { code: 'gu-IN', label: 'Gujarati (ગુજરાતી)' },
-    { code: 'pa-IN', label: 'Punjabi (ਪੰਜਾਬੀ)' }
-  ];
-
   const containerClass = isCodingMode ? "mx-auto px-4 py-8 relative z-10 max-w-7xl" : "mx-auto px-4 py-8 relative z-10 max-w-3xl";
   const gridClass = isCodingMode ? "grid grid-cols-1 lg:grid-cols-2 gap-8" : "";
 
@@ -767,7 +774,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
             </div>
             {warningsCount > 0 && (
               <span className="ml-3 bg-amber-600 px-2 py-0.5 rounded text-xs font-bold">
-                {warningsCount}/7
+                {warningsCount}
               </span>
             )}
           </motion.div>
@@ -855,6 +862,14 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
                 <span className="text-slate-400 italic">Start speaking to transcribe your response...</span>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Voice availability notice (honest degradation when no TTS voice exists) */}
+        {voiceNotice && (
+          <div className="w-full flex items-start gap-3 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50 mt-6 text-xs leading-relaxed">
+            <Globe className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{voiceNotice}</span>
           </div>
         )}
 

@@ -169,6 +169,9 @@ const interviewSchema = new mongoose.Schema(
   }
 );
 
+// Supports GET /interview/history: find({user}).sort({createdAt:-1})
+interviewSchema.index({ user: 1, createdAt: -1 });
+
 const Interview = mongoose.model('Interview', interviewSchema);
 
 module.exports = Interview;

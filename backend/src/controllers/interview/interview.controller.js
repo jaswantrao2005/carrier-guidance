@@ -4,6 +4,8 @@ const Interview = require("../../models/Interview");
 const Resume = require("../../models/Resume");
 const pdfParse = require("pdf-parse-new");
 const mammoth = require("mammoth");
+const fs = require("fs");
+const path = require("path");
 
 /**
  * Controller to fetch the next interview question adaptively.
@@ -246,6 +248,33 @@ const uploadVideo = async (req, res, next) => {
 };
 
 /**
+ * Stream an interview recording to its OWNER only.
+ * Replaces the removed unauthenticated `/uploads` static route.
+ * Returns 404 (not 403) for someone else's interview so existence is not confirmed.
+ */
+const getRecording = async (req, res, next) => {
+  try {
+    const interview = await Interview.findOne({ _id: req.params.id, user: req.user.id });
+    if (!interview || !interview.recordingUrl) {
+      return res.status(404).json({ success: false, error: "Recording not found." });
+    }
+
+    // recordingUrl is stored as "/uploads/recordings/<file>". Resolve it inside the
+    // recordings directory and refuse anything that escapes it (path traversal).
+    const recordingsDir = path.resolve(__dirname, "../../../uploads/recordings");
+    const filePath = path.resolve(recordingsDir, path.basename(interview.recordingUrl));
+    if (!filePath.startsWith(recordingsDir + path.sep) || !fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: "Recording not found." });
+    }
+
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.sendFile(filePath);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Controller to securely execute code in an isolated environment (Stub)
  */
 
@@ -365,5 +394,6 @@ module.exports = {
   getInterviewById,
   getCompanyResearchData,
   parseJobDescriptionFile,
-  uploadVideo
+  uploadVideo,
+  getRecording
 };

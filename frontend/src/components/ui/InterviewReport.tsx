@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import apiClient from '@/features/api/client';
 import { motion } from 'framer-motion';
 import { CheckCircle2, AlertTriangle, MessageSquare, TrendingUp, Lightbulb, ChevronDown, ChevronUp, BookOpen, UserCheck, X } from 'lucide-react';
 
@@ -18,6 +19,7 @@ interface TranscriptItem {
 
 interface InterviewReportProps {
   report: {
+    _id?: string;
     role: string;
     overallScore: number;
     categoryScores: {
@@ -65,6 +67,27 @@ interface InterviewReportProps {
 
 export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack }) => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [recordingSrc, setRecordingSrc] = useState<string | null>(null);
+
+  // Recordings are no longer public files. Fetch through the authenticated endpoint
+  // (the axios interceptor attaches the JWT) and render from an object URL.
+  useEffect(() => {
+    if (!report.recordingUrl || !report._id) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    apiClient
+      .get(`interview/${report._id}/recording`, { responseType: 'blob' })
+      .then((res) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(res.data);
+        setRecordingSrc(objectUrl);
+      })
+      .catch(() => setRecordingSrc(null));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [report._id, report.recordingUrl]);
 
   const toggleAccordion = (index: number) => {
     setExpandedIndex(expandedIndex === index ? null : index);
@@ -133,7 +156,7 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
         </div>
       </div>
 
-      {/* Interview Integrity & Recording Section */}
+      {/* Session Activity & Recording Section */}
       {(report.recordingUrl || report.integrityStatus) && (
         <div className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl bg-white/60 dark:bg-slate-900/60">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
@@ -143,7 +166,7 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
                 Interview Integrity & Recording
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Automated monitoring results from your interview session.
+                Unverified activity signals from your session, shown for your reference only. These do not affect your score.
               </p>
             </div>
             
@@ -154,7 +177,7 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
               'bg-red-500/10 text-red-600 border-red-500/20'
             }`}>
               {report.integrityStatus === 'Clean' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-              {report.integrityStatus === 'Clean' ? 'Integrity Verified' : report.integrityStatus === 'Warnings' ? `${report.integrityWarningsCount} Warnings Detected` : 'Terminated for Integrity Violations'}
+              {report.integrityStatus === 'Clean' ? 'No activity noted' : `${report.integrityWarningsCount ?? 0} activity notes`}
             </div>
           </div>
 
@@ -165,14 +188,21 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
                 Interview Recording
               </h3>
               {report.recordingUrl ? (
-                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black aspect-video shadow-inner">
-                  {/* Assuming backend API URL is localhost:5000 in dev, ideally this is passed via env or config, but we can use relative path if frontend proxy handles it, or full URL */}
-                  <video 
-                    src={`http://localhost:5000${report.recordingUrl}`} 
-                    controls 
-                    className="w-full h-full object-cover" 
-                  />
-                </div>
+                <>
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black aspect-video shadow-inner">
+                    {recordingSrc ? (
+                      <video src={recordingSrc} controls className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                        Loading recording…
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">
+                    This recording contains your answers only — the interviewer&apos;s questions are
+                    spoken by your browser and cannot be captured.
+                  </p>
+                </>
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 aspect-video flex flex-col items-center justify-center text-slate-400 p-6 text-center">
                   <UserCheck className="w-8 h-8 mb-2 opacity-50" />

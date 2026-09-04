@@ -1,9 +1,5 @@
 const { searchWeb } = require('./search.service');
-const Groq = require('groq-sdk');
-
-const groq = process.env.GROQ_API_KEY
-  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
-  : null;
+const { callGroqWithRotation } = require('../groq/groqPool');
 
 const GROQ_MODEL = "openai/gpt-oss-120b";
 
@@ -28,9 +24,6 @@ function parseJSONResponse(text) {
 async function researchCompany(companyName) {
   try {
     if (!companyName) return null;
-    if (!groq) {
-      throw new Error("GROQ_API_KEY is not configured");
-    }
 
     // Query for company development history over the last 10 years
     const query = `${companyName} company history developments milestones recent years`;

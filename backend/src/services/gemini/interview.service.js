@@ -226,7 +226,7 @@ Return a valid JSON object with the following keys and data types only:
         { role: "user", content: prompt }
       ],
       model: GROQ_MODEL,
-      temperature: 0.7,
+      temperature: 0, // scoring must be reproducible; 0.7 made the same interview score differently on re-run
       response_format: { type: "json_object" }
       });
     });

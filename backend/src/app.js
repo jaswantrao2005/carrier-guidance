@@ -19,8 +19,11 @@ app.use(cors());
 app.use(express.json());
 app.use(requestLogger);
 
-// Serve static files from the uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// SECURITY: the unauthenticated static /uploads route was REMOVED.
+// It exposed every candidate's resume PDF and interview video to anyone who could
+// guess a filename -- no auth, no ownership check, permanently and publicly.
+// Media is now served only through ownership-checked endpoints:
+//   GET /api/interview/:id/recording  (see interview.controller.js)
 
 // Root route
 app.get('/', (req, res) => {

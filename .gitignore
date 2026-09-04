@@ -6,3 +6,9 @@ out
 .env.*
 .DS_Store
 npm-debug.log*
+
+# Uploaded user content (resumes, recordings) must never be committed
+backend/uploads/
+
+# Build artefacts
+frontend/tsconfig.tsbuildinfo

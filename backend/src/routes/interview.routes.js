@@ -9,6 +9,7 @@ const {
   getCompanyResearchData,
   parseJobDescriptionFile,
   uploadVideo,
+  getRecording,
   runCode,
   submitCode
 } = require("../controllers/interview/interview.controller");
@@ -31,6 +32,7 @@ router.post("/research", getCompanyResearchData);
 router.post("/upload-jd", upload.single("file"), parseJobDescriptionFile);
 router.get("/:id", getInterviewById);
 router.post("/:id/recording", videoUpload.single("video"), uploadVideo);
+router.get("/:id/recording", getRecording);
 router.post("/code/run", runCode);
 router.post("/code/submit", submitCode);
 
