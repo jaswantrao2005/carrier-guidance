@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useMicVAD } from '@ricky0123/vad-react';
 import { Mic, MicOff, Volume2, Loader2, Play, Square, CheckCircle, AlertTriangle, Globe, Code, PlayCircle } from 'lucide-react';
 import apiClient from '@/features/api/client';
 import Editor from '@monaco-editor/react';
@@ -128,6 +129,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   
   // Integrity & Recording States
   const [warningsCount, setWarningsCount] = useState<number>(0);
+  const [faceWarnings, setFaceWarnings] = useState<number>(0);
+  const [tabWarnings, setTabWarnings] = useState<number>(0);
+  const [audioWarnings, setAudioWarnings] = useState<number>(0);
   const [recentWarning, setRecentWarning] = useState<string | null>(null);
   const integrityEventsRef = useRef<any[]>([]);
   const lastEventTimeRef = useRef<{ [key: string]: number }>({});
@@ -219,24 +223,85 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     const now = Date.now();
     const lastTime = lastEventTimeRef.current[type] || 0;
     
-    // Debounce similar events by 10 seconds
     if (now - lastTime < 10000) return;
     lastEventTimeRef.current[type] = now;
     
     const timestamp = Math.floor((now - interviewStartTimeRef.current) / 1000);
     integrityEventsRef.current.push({ type, description, severity, timestamp });
     
-    setWarningsCount(prev => {
-      const newCount = prev + 1;
-      if (newCount >= 7 && status !== 'finishing') {
-        forceTerminateInterview();
-      }
-      return newCount;
-    });
+    setWarningsCount(prev => prev + 1);
+    
+    if (type === 'Multiple Persons') {
+       setFaceWarnings(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 3 && statusRef.current !== 'finishing') forceTerminateInterview();
+          return newCount;
+       });
+    } else if (type === 'Tab Switched') {
+       setTabWarnings(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 2 && statusRef.current !== 'finishing') forceTerminateInterview();
+          return newCount;
+       });
+    } else if (type === 'Background Human Voice') {
+       setAudioWarnings(prev => {
+          const newCount = prev + 1;
+          if (newCount >= 5 && statusRef.current !== 'finishing') forceTerminateInterview();
+          return newCount;
+       });
+    }
 
     setRecentWarning(description);
     setTimeout(() => setRecentWarning(null), 5000);
   };
+
+  
+  // VAD Implementation
+  const vad = useMicVAD({
+    startOnLoad: true,
+    onSpeechStart: () => {
+      if (statusRef.current === 'speaking' || statusRef.current === 'processing') {
+         addIntegrityEvent('Background Human Voice', 'Human voice detected while interviewer is speaking/processing.', 'Medium');
+      }
+    }
+  });
+
+  // Browser Proctoring Implementation
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && statusRef.current !== 'finishing' && statusRef.current !== 'idle') {
+        addIntegrityEvent('Tab Switched', 'You navigated away from the interview screen.', 'High');
+      }
+    };
+    
+    const handleBlur = () => {
+      if (statusRef.current !== 'finishing' && statusRef.current !== 'idle') {
+        addIntegrityEvent('Tab Switched', 'You clicked outside the interview window.', 'High');
+      }
+    };
+
+    const preventCopyPaste = (e: any) => {
+      if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        addIntegrityEvent('Copy/Paste Blocked', 'Copying and pasting is not allowed to prevent cheating.', 'Medium');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    
+    document.addEventListener('copy', preventCopyPaste);
+    document.addEventListener('paste', preventCopyPaste);
+    document.addEventListener('contextmenu', preventCopyPaste);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('copy', preventCopyPaste);
+      document.removeEventListener('paste', preventCopyPaste);
+      document.removeEventListener('contextmenu', preventCopyPaste);
+    };
+  }, []);
 
   const handleIntegrityCheck = (facesCount: number) => {
     if (facesCount === 0) {
