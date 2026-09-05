@@ -18,6 +18,7 @@ interface InterviewRoomProps {
   experienceLevel?: 'fresher' | 'experienced';
   totalExperienceYears?: number;
   employmentHistory?: Array<{companyName: string, position: string, durationYears: number}>;
+  durationPreset?: string;
   onFinish: (reportId: string) => void;
   onCancel: () => void;
 }
@@ -125,6 +126,7 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   experienceLevel = 'fresher',
   totalExperienceYears = 0,
   employmentHistory = [],
+  durationPreset = 'standard',
   onFinish, 
   onCancel 
 }) => {
@@ -140,6 +142,13 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [timer, setTimer] = useState<number>(0);
   const [micError, setMicError] = useState<string | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+
+  // Topic progress. The interview is a set of topics with a variable number of
+  // follow-ups, so a fixed "question N of 10" is no longer meaningful.
+  const [topicIndex, setTopicIndex] = useState<number>(0);
+  const [totalTopics, setTotalTopics] = useState<number>(0);
+  const [isFollowUp, setIsFollowUp] = useState<boolean>(false);
+  const topicPlanRef = useRef<any[] | null>(null);
   
   // Integrity & Recording States
   const [warningsCount, setWarningsCount] = useState<number>(0);
@@ -163,6 +172,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
   const [codingOutput, setCodingOutput] = useState<string>('');
   const [isRunningCode, setIsRunningCode] = useState<boolean>(false);
   const [codingSubmissions, setCodingSubmissions] = useState<any[]>([]);
+  // Mirrors codingSubmissions so finalizeInterview sees the latest set even when
+  // the server ends the interview on the very next question fetch.
+  const codingSubmissionsRef = useRef<any[]>([]);
 
   const synthesisRef = useRef<SpeechSynthesis | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -443,18 +455,35 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         resumeId,
         experienceLevel,
         totalExperienceYears,
-        employmentHistory
+        employmentHistory,
+        // The server decides when the interview ends, and how deep to go on each
+        // topic. We round-trip its plan so it keeps state between questions.
+        durationPreset,
+        topicPlan: topicPlanRef.current,
       });
 
       if (response.data.success) {
-        const { question, category: cat, difficulty: diff } = response.data.data;
+        const data = response.data.data;
+
+        // The server -- not a hardcoded count in the browser -- says when we're done.
+        if (data.done) {
+          finalizeInterview(history);
+          return;
+        }
+
+        const { question, category: cat, difficulty: diff } = data;
+        if (data.topicPlan) topicPlanRef.current = data.topicPlan;
+        if (typeof data.topicIndex === 'number') setTopicIndex(data.topicIndex);
+        if (typeof data.totalTopics === 'number') setTotalTopics(data.totalTopics);
+        setIsFollowUp(Boolean(data.isFollowUp));
+
         setCurrentQuestion(question);
         setCategory(cat);
         setDifficulty(diff);
         setTranscript('');
         setInterimTranscript('');
         interimTranscriptRef.current = '';
-        
+
         // Let the AI speak the question
         speakQuestion(question);
       } else {
@@ -567,11 +596,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
     const updatedHistory = [...qaHistory, { question: currentQuestion, answer: finalAnswer }];
     setQaHistory(updatedHistory);
 
-    if (updatedHistory.length >= 10) {
-      finalizeInterview(updatedHistory);
-    } else {
-      fetchNextQuestion(updatedHistory);
-    }
+    // Length is decided by the server (topic plan + duration preset), not here.
+    fetchNextQuestion(updatedHistory);
   };
 
   const handleRunCode = async () => {
@@ -641,11 +667,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
       const updatedHistory = [...qaHistory, { question: currentQuestion, answer: answerWithCode }];
       setQaHistory(updatedHistory);
 
-      if (updatedHistory.length >= 10) {
-        finalizeInterview(updatedHistory, undefined, newSubmissions);
-      } else {
-        fetchNextQuestion(updatedHistory);
-      }
+      // Length is decided by the server, not a hardcoded count here.
+      codingSubmissionsRef.current = newSubmissions;
+      fetchNextQuestion(updatedHistory);
     } catch (e) {
       setCodingOutput("Error submitting code. Please try again.");
     } finally {
@@ -702,7 +726,9 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
         employmentHistory,
         codingData: isCodingMode ? {
           language: codingLanguage,
-          codingSubmissions: customCodingSubmissions || codingSubmissions
+          codingSubmissions:
+            customCodingSubmissions ??
+            (codingSubmissionsRef.current.length ? codingSubmissionsRef.current : codingSubmissions)
         } : null
       });
 
@@ -792,7 +818,8 @@ export const InterviewRoom: React.FC<InterviewRoomProps> = ({
           </span>
         </div>
         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-          Question {qaHistory.length + 1} / 10 (Estimated)
+          {totalTopics > 0 ? `Topic ${Math.min(topicIndex + 1, totalTopics)} of ${totalTopics}` : `Question ${qaHistory.length + 1}`}
+          {isFollowUp && <span className="ml-2 text-primary-500">· follow-up</span>}
         </div>
       </div>
 

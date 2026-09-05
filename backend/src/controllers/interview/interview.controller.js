@@ -39,7 +39,14 @@ const getNextQuestion = async (req, res, next) => {
       companyResearch || null,
       experienceLevel || 'fresher',
       totalExperienceYears || 0,
-      employmentHistory || []
+      employmentHistory || [],
+      {
+        // The interview is a set of topics, not a fixed question count. The plan
+        // is round-tripped through the client for now; it moves server-side with
+        // the session work (see checklist Stage 2).
+        durationPreset: req.body.durationPreset,
+        topicPlan: req.body.topicPlan,
+      }
     );
 
     res.status(200).json({

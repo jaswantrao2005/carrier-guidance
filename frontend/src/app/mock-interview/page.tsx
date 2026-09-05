@@ -28,6 +28,7 @@ export default function MockInterviewPage() {
   
   // Interview Type state
   const [interviewType, setInterviewType] = useState<string>('Overall Interview');
+  const [durationPreset, setDurationPreset] = useState<string>('standard');
   
   // Resume Selection state
   const [resumes, setResumes] = useState<any[]>([]);
@@ -78,6 +79,16 @@ export default function MockInterviewPage() {
     'DevOps / Cloud',
     'Product Management',
     'Custom Role'
+  ];
+
+  // Interview length is a question BUDGET with an estimated time, not a hard clock --
+  // the interviewer follows up on answers, so the exact count varies. Times are
+  // deliberately over-quoted: candidates react better to an interview that finishes
+  // early than one that overruns.
+  const DURATION_OPTIONS = [
+    { id: 'quick',    label: 'Quick practice',     time: 'About 10 minutes', detail: '3 topics · warm-up' },
+    { id: 'standard', label: 'Standard interview', time: 'About 25 minutes', detail: '5 topics · most realistic' },
+    { id: 'full',     label: 'Full interview',     time: 'About 45 minutes', detail: '8 topics · in depth' },
   ];
 
   const interviewTypes = [
@@ -370,6 +381,7 @@ export default function MockInterviewPage() {
         <InterviewRoom
           role={roleToUse}
           interviewType={interviewType}
+          durationPreset={durationPreset}
           resumeId={selectedResumeId}
           jobDescriptionText={jobDescriptionText}
           companyName={companyName}
@@ -758,6 +770,39 @@ export default function MockInterviewPage() {
                         }`}
                       >
                         {typeOption}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Interview Length */}
+                <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    How long do you have?
+                  </label>
+                  <p className="text-xs text-slate-400 mb-3">
+                    The interviewer will follow up on your answers, so the exact number of
+                    questions varies — just like a real interview.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {DURATION_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setDurationPreset(opt.id)}
+                        className={`p-4 rounded-xl border text-left transition-all ${
+                          durationPreset === opt.id
+                            ? 'bg-primary-500 text-white border-primary-500 shadow-md shadow-primary-500/20'
+                            : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">{opt.label}</div>
+                        <div className={`text-xs mt-0.5 ${durationPreset === opt.id ? 'text-white/80' : 'text-slate-400'}`}>
+                          {opt.time}
+                        </div>
+                        <div className={`text-[11px] mt-1.5 ${durationPreset === opt.id ? 'text-white/70' : 'text-slate-400'}`}>
+                          {opt.detail}
+                        </div>
                       </button>
                     ))}
                   </div>
