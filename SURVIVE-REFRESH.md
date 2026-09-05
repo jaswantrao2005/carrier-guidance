@@ -206,10 +206,53 @@ interviewSessionSchema.index({ lastActivityAt: 1 });   // sweeper
 **Why it matters:** this is what makes "resume or discard?" reliable under
 concurrent requests, and it blocks *"open five tabs, keep the best score."*
 
-⚠️ **Gotchas, verified from MongoDB docs:**
-- Cannot combine `partialFilterExpression` with `sparse`
-- Keep the application-level check too — a unique index gives you a race-free
-  guarantee but an ugly error; check first for a clean 409
+⚠️ **Gotchas, verified from the MongoDB manual:**
+
+- **`$ne` is not an allowed operator** in `partialFilterExpression`. Allowed:
+  equality/`$eq`, `$exists: true`, `$gt/$gte/$lt/$lte`, `$type`, `$and`, `$or`,
+  `$in`, `$geoWithin`, `$geoIntersects`. So you cannot say *"status is not
+  completed"* — you must enumerate the live states positively, which is why the
+  index above uses `$in`. **Design the status enum around this.**
+- **Cannot combine with `sparse: true`** — index creation fails.
+- **The planner only uses the index when the query repeats the filter.**
+  `find({user})` will not use it; `find({user, status: 'in_progress'})` will.
+  Easy to add the constraint and accidentally regress a query.
+- **Set `autoIndex: false` in production** and create indexes from a migration
+  step, or every process start races to build them. Avoid `syncIndexes()` on a
+  shared database — it *drops* indexes not in the schema.
+- **Creating the index fails if duplicates already exist.** Clean up first.
+
+⚠️ **The atomicity gap worth knowing about.** Completing one session and starting
+another is two writes, with a window where a concurrent request sees zero active
+sessions and creates a second. Handle it with catch-and-refetch — MongoDB's
+documented behaviour is that the loser of a concurrent upsert race gets a
+duplicate-key error, and the correct response is to re-read the winner:
+
+```js
+try {
+  return await Session.findOneAndUpdate(
+    { user: userId, status: { $in: ['created', 'in_progress'] } },
+    { $setOnInsert: { user: userId, status: 'created', startedAt: new Date() } },
+    { upsert: true, returnDocument: 'after' }
+  );
+} catch (err) {
+  if (err.code === 11000) return Session.findOne({ user: userId, status: { $in: ['created','in_progress'] } });
+  throw err;
+}
+```
+
+**Detecting duplicate-key errors reliably** (used in several places below):
+
+```js
+const isDuplicateKey = (err) =>
+  err && (err.code === 11000 || err.code === 11001 ||
+          err.writeErrors?.some(e => e.code === 11000 || e.err?.code === 11000));
+```
+
+Match on **`err.code`, never `err.name`** (it is `MongoBulkWriteError` for
+`insertMany`) and **never regex `errmsg`** — the message format has changed
+across server versions. `keyPattern`/`keyValue` are the stable contract, but
+guard them with `??` since some driver/server combinations omit `keyPattern`.
 
 **Size: S** · 🔬 fire two `POST /session` concurrently → exactly one wins.
 
@@ -280,36 +323,57 @@ LLM call in the logs.
 succeeds server-side, response is lost, client retries. Without protection you
 get a duplicate turn, a second LLM charge, and a corrupted transcript.
 
-Three layers, all required:
+**⚠️ The obvious approach does not work.** A unique index on the embedded array —
+`{ _id: 1, 'turns.clientTurnId': 1 }` — enforces **nothing**. MongoDB's docs are
+explicit:
 
-1. **`clientTurnId`** — a UUID generated **once per turn**, reused across every
-   retry. Send it as the `Idempotency-Key` header too.
-2. **Unique index** on `(sessionId, clientTurnId)` — the DB is the final arbiter.
-3. **Catch the duplicate, don't pre-check.** A read-then-write has a race window;
-   the index does not:
+> *"In a unique multikey index, a document may have array elements that result in
+> repeating index key values **as long as the index key values for that document
+> do not duplicate those of another document**."*
+
+Uniqueness on a multikey index is enforced **across documents, not within one
+document's array**. Since `_id` is unique per document, that index is trivially
+satisfied and will happily let you push the same `clientTurnId` twice. I had this
+wrong in an earlier draft; verified against the MongoDB manual.
+
+**Use a conditional `$push` instead — the guard goes in the query predicate:**
 
 ```js
-try {
-  await recordTurn({ sessionId, seq, clientTurnId, answer });
-} catch (e) {
-  if (e.code === 11000) {
-    // Retry of a turn we already have. Return CURRENT STATE, not a bare 200 --
-    // a client that lost the original response gets everything it needs.
-    return res.json(await buildState(sessionId));
-  }
-  throw e;
+const doc = await Session.findOneAndUpdate(
+  {
+    _id: sessionId,
+    status: 'in_progress',
+    currentSeq: seq,                                    // CAS: no double-advance
+    'turns.clientTurnId': { $ne: clientTurnId },        // the real idempotency guard
+  },
+  { $push: { turns: turnDoc },
+    $inc:  { currentSeq: 1 },
+    $set:  { lastActivityAt: new Date() } },
+  { returnDocument: 'after', runValidators: true }
+);
+
+if (!doc) {
+  // Either a retry we already recorded, or the seq moved on. Both mean:
+  // return CURRENT STATE, not an error -- a client that lost the original
+  // response gets everything it needs and its retry loop terminates.
+  return res.json(await buildState(sessionId));
 }
 ```
 
-Keep the turn write and the seq increment atomic with a compare-and-set:
+This is atomic: filter and update are one `findAndModify` on the server, so two
+concurrent identical requests cannot both match. Add a **non-unique** supporting
+index `{ _id: 1, 'turns.clientTurnId': 1 }` for the predicate's benefit only.
 
-```js
-const r = await Session.updateOne(
-  { _id: sessionId, currentSeq: seq },          // CAS guard
-  { $push: { turns: turnDoc }, $inc: { currentSeq: 1 } }
-);
-if (r.matchedCount === 0) { /* someone already advanced -- treat as duplicate */ }
-```
+Two Mongoose defaults that bite here:
+- **`findOneAndUpdate` returns the document from *before* the update** unless you
+  pass `returnDocument: 'after'`
+- **`runValidators` defaults to `false`** on all update operations
+
+> **If `turns` outgrows the document:** a long interview with full transcripts
+> will eventually approach MongoDB's 16 MB document limit. At that point move
+> turns to their own collection, where a genuine
+> `{ sessionId: 1, clientTurnId: 1 }` unique index *does* work. Not needed now,
+> but design the accessor functions so this swap is local.
 
 > **Terminology, stated precisely:** you cannot get exactly-once *delivery* over
 > an unreliable network. This gives at-least-once delivery with an
@@ -324,7 +388,21 @@ if (r.matchedCount === 0) { /* someone already advanced -- treat as duplicate */
 
 `complete` marks the session and creates the `Interview` record. For now it may
 stay synchronous; the queue is a separate task in [checklist.md](checklist.md)
-Stage 5. **Size: S**
+Stage 5.
+
+**Poll this endpoint; do not add SSE yet.** If you later stream progress instead,
+three things will bite:
+
+- **`compression()` middleware buffers the stream** and must be disabled for the
+  route, or events accumulate until the buffer flushes.
+- **nginx buffers by default** — send `X-Accel-Buffering: no`, and note nginx
+  proxies upstream over HTTP/1.0 unless you set `proxy_http_version 1.1` plus
+  `proxy_set_header Connection ''`.
+- **Browsers cap HTTP/1.1 at 6 connections per origin**, and a stream holds one
+  for its whole life. Two tabs + two streams + uploads and the page hangs with no
+  error. Fixed by HTTP/2 *and* by the §6.6 primary-tab pattern.
+
+A 2-second poll avoids all three. **Size: S**
 
 ---
 
@@ -558,20 +636,124 @@ Retain the partial transcript — never delete it.
 
 ### Task 6.1 — IndexedDB store
 
-**New:** `frontend/src/lib/sessionStore.ts`, using `idb`
+**New:** `frontend/src/lib/sessionStore.ts`, using **`idb@8`** (~1.2 kB).
 
-Three stores:
-- `drafts` keyed `[sessionId, seq]` — the in-progress answer
-- `chunks` keyed `[sessionId, seq]` with an `uploaded` flag
-- `outbox` keyed `clientTurnId` — turns awaiting acknowledgement
+```js
+const db = await openDB('interview', 1, {
+  upgrade(db, oldVersion) {
+    if (oldVersion < 1) {
+      db.createObjectStore('chunks', { keyPath: ['sessionId', 'seq'] });
+      db.createObjectStore('drafts');   // key: `${sessionId}:${seq}`
+      db.createObjectStore('outbox');   // key: clientTurnId
+    }
+  },
+  blocked()  { notify('Close the other tab holding this interview.'); },
+  blocking() { flushPending().finally(() => { db.close(); location.reload(); }); },
+  terminated() { dbPromise = null; connect(); },   // storage evicted / killed
+});
+```
 
-Two things to get right:
-- **Store recording data as Blobs, not ArrayBuffers** — Blobs can be
-  disk-backed rather than held in memory
-- **Call `navigator.storage.persist()` at interview start** — default storage
-  is best-effort and **evictable under disk pressure**
+**Compound key `['sessionId','seq']` does three jobs at once:** array keys sort
+element-by-element, so chunks come back **already ordered**; a prefix scan gets
+one session's chunks; and using `add()` rather than `put()` makes a replayed
+chunk throw `ConstraintError` instead of silently double-writing.
+
+```js
+// Prefix scan -- returns sorted by seq
+const range = IDBKeyRange.bound([sessionId, -Infinity], [sessionId, Infinity]);
+return db.getAll('chunks', range);
+```
+
+⚠️ **`IDBKeyRange` is one-dimensional.** `bound([a1,b1],[a2,b2])` is a single
+lexicographic span, **not** "a in range AND b in range". That is exactly right
+for a single-session prefix scan (a1 === a2) but returns garbage if you try to
+range both components.
+
+⚠️ **Never `await` anything non-IDB inside a transaction.** IDB auto-commits as
+soon as the microtask queue drains, so an `await fetch(...)` mid-transaction
+throws `TransactionInactiveError`. Do the fetch first, then open the transaction:
+
+```js
+const tx = db.transaction('chunks', 'readwrite');
+await Promise.all([...records.map(r => tx.store.add(r)), tx.done]);
+```
+
+⚠️ **Two-tab upgrade deadlock.** If one tab holds v1 and another loads v2, the
+new tab's `openDB` **hangs forever** unless the old tab's `blocking` handler calls
+`db.close()`. There is no timeout. Hence the handler above. Better: avoid version
+bumps during a live interview — IDB records are schemaless, so new optional
+fields need no bump; reserve bumps for adding stores.
+
+⚠️ **Argument order:** `db.put(store, value, key)` — value *before* key, the
+reverse of most key-value APIs.
+
+**On Blobs:** store `Blob` directly (structured clone handles it, and browsers
+keep the payload out-of-line rather than in the record). But there are
+long-standing WebKit bugs — blob-in-IDB fails outright in **iOS Private
+Browsing**, and there are reports of writes that never settle. So: wrap blob
+writes in a timeout race, and keep an `ArrayBuffer` + mime fallback
+(`new Blob([buf], {type})` on read), which round-trips everywhere. Never store
+`URL.createObjectURL()` strings — they die with the document.
 
 **Size: S**
+
+---
+
+### Task 6.1a — Storage durability: ask, but don't depend on it
+
+```js
+if (!(await navigator.storage.persisted())) {   // non-prompting check first
+  await navigator.storage.persist();            // may prompt on Firefox
+}
+```
+
+**Do not treat `persist()` as a precondition — it usually returns `false`.**
+
+| Browser | Behaviour |
+|---|---|
+| Chrome / Edge | **No prompt.** Auto-decides from engagement heuristics (bookmarked, installed, notification permission). A first-time visitor almost always gets `false`. |
+| Firefox | **Prompts** the user. |
+| Safari | No prompt; decides from interaction history. |
+
+Call `persisted()` first so you don't fire a gratuitous Firefox dialog on every
+load, and time the `persist()` call to the "Start interview" click — it improves
+Chrome's odds and makes the Firefox prompt non-surprising.
+
+**Quota is not the constraint you'd guess.** Chrome allows ~60% of disk; Firefox's
+binding limit is a **10 GiB group limit per site**, not the headline 10%. The one
+that matters for us: **Safari in an embedded WebView** — a candidate opening the
+link from LinkedIn's or Gmail's in-app browser on iOS — gets **~15% instead of
+60%**, *and a separate storage partition from real Safari*, so anything buffered
+there is invisible if they later open the link properly. Worth detecting and
+warning about.
+
+**Handling quota exhaustion mid-write:**
+
+```js
+catch (err) {
+  if (err.name === 'QuotaExceededError') { … }
+}
+```
+
+- Match on **`err.name`**, not `err.code` (the legacy `22` is deprecated).
+- **The whole transaction aborts, not just the failing write.** If you batched 20
+  chunks and #17 blew the quota, all 20 roll back. So keep one blob per
+  transaction, and put metadata writes in a separate transaction from blob writes.
+- Recovery order: drop uploaded chunks of *other* sessions → drop server-acked
+  chunks of this one → **stop recording media but keep the answer text** (it's
+  tiny and it's what the score is built from) → tell the candidate.
+
+**There is no eviction event.** Nothing fires, and eviction is all-or-nothing per
+origin, so you cannot leave a breadcrumb in one store to detect loss in another.
+Detect it the way that suits us anyway: **the server knows the highest `seq` it
+acked**, so on reconnect the client reports its local max — `local < server` means
+local data was lost. That's strictly better than any client-side trick here.
+
+Note Safari's **7-day eviction** for origins with no user interaction: irrelevant
+mid-session, fatal for "resume your interview next week." Another reason the
+server is the record.
+
+**Size: XS**
 
 ---
 
@@ -642,10 +824,54 @@ server-side. **Size: S**
 
 Two tabs on the same interview will both read the same state and both submit.
 
-Simplest sufficient answer: the `(sessionId, clientTurnId)` unique index already
-makes double-submits harmless. On top of that, use **BroadcastChannel** to detect
-a second tab and show *"This interview is open in another tab"* with a
-**Take over here** button.
+**Use the Web Locks API, not BroadcastChannel, for the exclusion.** BroadcastChannel
+has no atomicity — messages are asynchronous with no ordering guarantee relative
+to your own state mutations, so two tabs can both check-then-act in the gap. It's
+for *notification*, never exclusion.
+
+Web Locks is Baseline since March 2022 (all four engines) and has the one property
+that matters: **the lock is released automatically when the tab closes or
+crashes.** No heartbeat, no stale-lock TTL, no cleanup code — unlike a
+localStorage-based election, which always needs both.
+
+**Primary-tab election** — acquire and never release:
+
+```js
+navigator.locks.request(`interview-primary:${sessionId}`, () => {
+  becomePrimary();                 // owns the uploader
+  return new Promise(() => {});    // held until this tab dies
+});
+```
+
+When the primary closes, the browser releases the lock and the next queued tab's
+callback fires. Automatic failover, zero code.
+
+**Non-blocking check** for a second tab that should warn rather than queue:
+
+```js
+const gotIt = await navigator.locks.request(
+  `interview-primary:${sessionId}`, { ifAvailable: true }, lock => lock !== null);
+if (!gotIt) showAlreadyOpenInAnotherTab();
+```
+
+**Around the submit itself**, with the re-check *inside* the lock — checking
+before acquiring is a TOCTOU bug:
+
+```js
+await navigator.locks.request(`interview-submit:${sessionId}`, async () => {
+  if (turn.seq <= await getLocalAckedSeq(sessionId)) return { skipped: true };
+  ...
+});
+```
+
+Do **not** use `steal: true` — it silently breaks the exclusion the other tab is
+relying on, and since crashed tabs release automatically there is no legitimate
+stale-lock case.
+
+**None of this is a security boundary.** Locks are per-origin-per-profile, so two
+browsers, or normal + incognito, bypass them entirely. §3.3's server-side
+idempotency is the actual guarantee; this layer is for the honest candidate with
+two tabs open.
 
 **Size: S**
 
