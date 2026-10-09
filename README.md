@@ -39,7 +39,7 @@ npm --prefix backend run dev
 npm --prefix frontend run dev
 ```
 
-Open http://localhost:3000. The API uses port 5000. `NEXT_PUBLIC_API_URL` accepts the backend origin with or without `/api` or a trailing slash. `FRONTEND_ORIGINS` must include the actual frontend origin.
+Open http://localhost:3000. The API uses port 5000. `NEXT_PUBLIC_API_URL` accepts the backend origin with or without `/api` or a trailing slash. The API allows the local frontend and `https://carrier-guidance-two.vercel.app`; add any other exact frontend origins to `FRONTEND_ORIGINS` as a comma-separated list. Do not add wildcard domains.
 
 ## Features
 
