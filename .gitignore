@@ -4,6 +4,8 @@ out
 .env
 .env.local
 .env.*
+!.env.example
+!.env.local.example
 .DS_Store
 npm-debug.log*
 
@@ -12,3 +14,6 @@ backend/uploads/
 
 # Build artefacts
 frontend/tsconfig.tsbuildinfo
+*.log
+screenshots/
+test-results/

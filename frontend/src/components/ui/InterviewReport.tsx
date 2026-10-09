@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import apiClient from '@/features/api/client';
+import { Recordings } from '@/features/interview/Recordings';
+import { deleteLocalSession } from '@/features/interview/storage';
+import { errorMessage } from '@/features/api/errors';
+import { PresenceReview, type PresenceResult } from '@/features/interview/PresenceReview';
 import { motion } from 'framer-motion';
 import { CheckCircle2, AlertTriangle, MessageSquare, TrendingUp, Lightbulb, ChevronDown, ChevronUp, BookOpen, UserCheck, X } from 'lucide-react';
 
@@ -20,13 +24,15 @@ interface TranscriptItem {
 interface InterviewReportProps {
   report: {
     _id?: string;
+    sessionId?: string;
+    consent?: { analyzeVideo?: boolean };
+    presenceReview?: PresenceResult;
     role: string;
     overallScore: number;
     categoryScores: {
       communication: number;
       technicalKnowledge: number;
       problemSolving: number;
-      confidence: number;
       resumeKnowledge: number;
       behavioral: number;
       roleReadiness: number;
@@ -68,11 +74,16 @@ interface InterviewReportProps {
 export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack }) => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [recordingSrc, setRecordingSrc] = useState<string | null>(null);
+  const [recordingError, setRecordingError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // Recordings are no longer public files. Fetch through the authenticated endpoint
   // (the axios interceptor attaches the JWT) and render from an object URL.
   useEffect(() => {
-    if (!report.recordingUrl || !report._id) return;
+    setRecordingSrc(null);
+    setRecordingError('');
+    if (report.sessionId || !report.recordingUrl || !report._id) return;
     let objectUrl: string | null = null;
     let cancelled = false;
     apiClient
@@ -82,12 +93,12 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
         objectUrl = URL.createObjectURL(res.data);
         setRecordingSrc(objectUrl);
       })
-      .catch(() => setRecordingSrc(null));
+      .catch(() => { if (!cancelled) setRecordingError('Recording could not be loaded. Please reload to retry.'); });
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [report._id, report.recordingUrl]);
+  }, [report._id, report.recordingUrl, report.sessionId]);
 
   const toggleAccordion = (index: number) => {
     setExpandedIndex(expandedIndex === index ? null : index);
@@ -109,14 +120,13 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
     communication: "Communication Skills",
     technicalKnowledge: "Technical Knowledge",
     problemSolving: "Problem Solving",
-    confidence: "Confidence & Clarity",
     resumeKnowledge: "Resume & Experience Alignment",
     behavioral: "Behavioral / HR Scenarios",
     roleReadiness: "Overall Role Readiness"
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 relative z-10 space-y-8">
+    <div className="w-full min-w-0 max-w-5xl mx-auto px-4 py-8 relative z-10 space-y-8 [overflow-wrap:anywhere]">
       
       {/* Back Button */}
       <button
@@ -125,6 +135,22 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
       >
         &larr; Back to Interviews
       </button>
+      {report._id && <button className="ml-4 text-sm text-red-600 underline disabled:opacity-50" disabled={deleting} onClick={async () => {
+        if (!window.confirm('Delete this interview, transcript and all recordings? This cannot be undone.')) return;
+        setDeleting(true); setDeleteError('');
+        try {
+          let localCleanupFailed = false;
+          if (report.sessionId) await deleteLocalSession(report.sessionId).catch(() => { localCleanupFailed = true; });
+          await apiClient.delete(`interview/${report._id}`);
+          if (localCleanupFailed) window.alert('Interview deleted from your account. Clear this site\'s browser storage to remove drafts from this device.');
+          onBack();
+        }
+        catch (e) { setDeleteError(errorMessage(e)); setDeleting(false); }
+      }}>{deleting ? 'Deleting...' : 'Delete interview and recordings'}</button>}
+      {deleteError && <p role="alert" className="text-red-600">{deleteError}</p>}
+      <p className="text-sm text-slate-500">AI feedback is for practice. Scores describe submitted answer content and are not a validated hiring assessment.</p>
+      {report._id && report.sessionId && <Recordings reportId={report._id} />}
+      {report._id && report.sessionId && report.consent?.analyzeVideo && <PresenceReview reportId={report._id} initial={report.presenceReview} />}
 
       {/* Hero Performance Banner */}
       <div className="glass rounded-3xl p-6 sm:p-10 border border-slate-200 dark:border-slate-800 shadow-xl bg-white/60 dark:bg-slate-900/60 flex flex-col md:flex-row items-center gap-8">
@@ -136,7 +162,7 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
           </div>
         </div>
 
-        <div className="flex-1 text-center md:text-left space-y-3">
+        <div className="min-w-0 flex-1 text-center md:text-left space-y-3">
           <span className="text-xs font-bold uppercase tracking-wider text-primary-500 bg-primary-500/10 px-3 py-1 rounded-full border border-primary-500/20">
             Mock Interview Report
           </span>
@@ -157,31 +183,21 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
       </div>
 
       {/* Session Activity & Recording Section */}
-      {(report.recordingUrl || report.integrityStatus) && (
+      {!report.sessionId && report.recordingUrl && (
         <div className="glass rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl bg-white/60 dark:bg-slate-900/60">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white font-heading flex items-center gap-2">
-                <AlertTriangle className={`w-5 h-5 ${report.integrityStatus === 'Clean' ? 'text-emerald-500' : report.integrityStatus === 'Warnings' ? 'text-amber-500' : 'text-red-500'}`} />
-                Interview Integrity & Recording
+                Saved interview recording
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Unverified activity signals from your session, shown for your reference only. These do not affect your score.
+                Private recording from an earlier version of the app.
               </p>
             </div>
             
-            {/* Status Badge */}
-            <div className={`px-4 py-2 rounded-2xl border text-sm font-bold flex items-center gap-2 ${
-              report.integrityStatus === 'Clean' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' :
-              report.integrityStatus === 'Warnings' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
-              'bg-red-500/10 text-red-600 border-red-500/20'
-            }`}>
-              {report.integrityStatus === 'Clean' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-              {report.integrityStatus === 'Clean' ? 'No activity noted' : `${report.integrityWarningsCount ?? 0} activity notes`}
-            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-6">
             {/* Video Player */}
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2 mb-4">
@@ -194,28 +210,19 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
                       <video src={recordingSrc} controls className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                        Loading recording…
+                        {recordingError || 'Loading recording...'}
                       </div>
                     )}
                   </div>
-                  <p className="mt-2 text-xs text-slate-400">
-                    This recording contains your answers only — the interviewer&apos;s questions are
-                    spoken by your browser and cannot be captured.
-                  </p>
+                  <p className="mt-2 text-xs text-slate-400">This file was saved with the earlier recording flow.</p>
                 </>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 aspect-video flex flex-col items-center justify-center text-slate-400 p-6 text-center">
-                  <UserCheck className="w-8 h-8 mb-2 opacity-50" />
-                  <span className="text-sm font-medium">Recording not available</span>
-                  <span className="text-xs">Candidate opted out or recording failed to upload.</span>
-                </div>
-              )}
+              ) : null}
             </div>
 
             {/* Integrity Events Timeline */}
-            <div>
+            {report.integrityEvents && report.integrityEvents.length > 0 && <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-2 mb-4 flex items-center justify-between">
-                <span>Monitoring Events</span>
+                <span>Earlier session activity notes</span>
                 {report.recordingDuration && (
                   <span className="text-xs font-semibold normal-case text-slate-400">
                     Duration: {Math.floor(report.recordingDuration / 60)}m {report.recordingDuration % 60}s
@@ -223,8 +230,9 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
                 )}
               </h3>
               
+              <p className="text-xs text-slate-500 mb-3">These notes were reported by the browser and are unverified. They do not affect your score.</p>
               <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                {report.integrityEvents && report.integrityEvents.length > 0 ? (
+                {
                   report.integrityEvents.map((evt, idx) => (
                     <div key={idx} className="flex gap-3 items-start p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/60">
                       <div className="shrink-0 mt-0.5">
@@ -241,14 +249,9 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
                       </div>
                     </div>
                   ))
-                ) : (
-                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 shrink-0" />
-                    <span className="text-sm font-medium">No integrity warnings recorded during the interview. Excellent!</span>
-                  </div>
-                )}
+                }
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -264,7 +267,7 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
           </h2>
           
           <div className="space-y-5">
-            {Object.entries(report.categoryScores).map(([key, score]) => (
+            {Object.entries(report.categoryScores).filter(([key]) => key !== 'confidence').map(([key, score]) => (
               <div key={key} className="space-y-2">
                 <div className="flex justify-between text-sm font-semibold">
                   <span className="text-slate-700 dark:text-slate-300">{scoreLabels[key] || key}</span>
@@ -400,17 +403,18 @@ export const InterviewReport: React.FC<InterviewReportProps> = ({ report, onBack
               {/* Header Toggle */}
               <button
                 onClick={() => toggleAccordion(idx)}
+                aria-expanded={expandedIndex === idx}
                 className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors text-left"
               >
-                <div className="flex items-center gap-3 pr-4">
+                <div className="min-w-0 flex-1 flex items-center gap-3 pr-4">
                   <span className="text-xs font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
                     Q{idx + 1}
                   </span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-sm sm:text-base line-clamp-1">
+                  <span className="min-w-0 font-bold text-slate-800 dark:text-slate-200 text-sm sm:text-base line-clamp-1">
                     {item.question}
                   </span>
                 </div>
-                {expandedIndex === idx ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                {expandedIndex === idx ? <ChevronUp className="w-5 h-5 shrink-0 text-slate-400" /> : <ChevronDown className="w-5 h-5 shrink-0 text-slate-400" />}
               </button>
 
               {/* Accordion Content */}

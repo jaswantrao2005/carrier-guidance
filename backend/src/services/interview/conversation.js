@@ -27,12 +27,9 @@
  * Everything here is a pure function so it can be tested without calling an LLM.
  */
 
-// Campion et al. classify probing into four levels of structure; level 2 --
-// "allow only limited or preplanned probing" -- is the theorised optimum
-// (Levashina et al. 2014, Proposition 8). Two probes sits there. It is NOT an
-// empirically derived number; no source specifies one. Computerised adaptive
-// testing always clamps min/max item counts too, for the same reason.
-const MAX_FOLLOW_UPS_PER_TOPIC = 2;
+// One clarification per primary question keeps the conversation moving and
+// prevents a vague or uncertain response from becoming repeated interrogation.
+const MAX_FOLLOW_UPS_PER_TOPIC = 1;
 
 /**
  * Candidate-facing duration presets: a question BUDGET with an estimated time,
@@ -178,9 +175,11 @@ function resumeSeed(resumeContext) {
 }
 
 const NON_ANSWERS = [
-  "i don't know", "i dont know", "no idea", "not sure", "i'm not sure",
-  "im not sure", "pass", "skip", "no answer", "[no verbal response",
-  "can't answer", "cant answer",
+  "i don't know", "i dont know", "i do not know", "no idea", "i have no idea", "not sure", "i'm not sure",
+  "im not sure", "i am not sure", "i'm unsure", "i am unsure", "no answer", "[no verbal response",
+  "can't answer", "cant answer", "i can't answer", "i cannot answer", "i have no experience", "no experience",
+  "i haven't done", "i have not done", "i haven't worked", "i have not worked", "please skip", "let's skip",
+  "can we skip", "could we skip", "i'd like to skip", "i would like to skip",
 ];
 
 function wordCount(text) {
@@ -214,6 +213,12 @@ function hasSpecifics(lower) {
   return numbers.test(lower) || concrete.test(lower) || properNoun.test(lower);
 }
 
+function hasSubmittedCode(answer) {
+  const value = String(answer || '');
+  return /\b(?:const|let|var)\s+\w+\s*=|\bfunction\s*(?:\w+\s*)?\(|\bdef\s+\w+\s*\(|\bclass\s+\w+\s*[{(:]|\bpublic\s+static\b|\b(?:console\.log|print)\s*\(|\w+\.reduce\s*\(|#include|=>/.test(value)
+    || /submitted code(?:\s*\([\w+#.-]+\))?\s*:\s*[\s\S]{10}/i.test(value);
+}
+
 /**
  * Classify the candidate's last answer to decide what to do next.
  *
@@ -230,13 +235,21 @@ function hasSpecifics(lower) {
  */
 function classifyAnswer(answer) {
   const text = String(answer || "").trim();
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   const words = wordCount(text);
 
-  if (!text || NON_ANSWERS.some((p) => lower.startsWith(p) || lower === p.trim())) {
+  if (!text || /^(?:pass|skip)(?:\s+(?:this|it|please|question))*[.!?\s]*$/.test(lower)
+    || NON_ANSWERS.some(p => lower === p || lower.startsWith(`${p} `) || lower.startsWith(`${p}.`) || lower.startsWith(`${p},`))) {
     return { kind: "no_answer", words };
   }
-  if (words < 25) return { kind: "thin", words };
+
+  if (words < 25) {
+    const action = /\b(built|implemented|designed|developed|debugged|migrated|optimized|optimised|wrote|led|created)\b/.test(lower);
+    const concrete = /\b(dashboard|service|api|pipeline|application|app|cache|database|deployment|migration|project|system|checkout|authentication|pagination)\b/.test(lower)
+      || hasSpecifics(lower);
+    if (words >= 8 && action && concrete) return { kind: hasOutcome(lower) ? "complete" : "needs_detail", words };
+    return { kind: "thin", words };
+  }
 
   const we = (lower.match(/\b(we|our|us)\b/g) || []).length;
   const i = (lower.match(/\b(i|my|me|myself)\b/g) || []).length;
@@ -292,16 +305,19 @@ function decideNextMove(plan, history, maxQuestions) {
   const last = history[history.length - 1];
   const cls = classifyAnswer(last && last.answer);
 
+  const codeSubmitted = ['problem_1', 'problem_2'].includes(topic.id) && cls.kind !== 'no_answer' && hasSubmittedCode(last?.answer);
   const canProbe =
-    topic.followUpsUsed < MAX_FOLLOW_UPS_PER_TOPIC &&
-    (cls.kind === "vague_we" || cls.kind === "no_outcome" || cls.kind === "unclear");
+    !['intro', 'closing'].includes(topic.id) && topic.followUpsUsed < MAX_FOLLOW_UPS_PER_TOPIC &&
+    (codeSubmitted || ['vague_we', 'no_outcome', 'unclear', 'needs_detail'].includes(cls.kind));
 
   // Reserve enough questions to still open every remaining topic.
   const topicsLeft = plan.length - idx - 1;
   const roomToProbe = maxQuestions - asked > topicsLeft;
 
   if (canProbe && roomToProbe) {
-    return { action: "follow_up", topic, topicIndex: idx, isLast, probe: cls.kind };
+    const conceptual = ['fundamentals', 'role_skills', 'complexity', 'edge_cases'].includes(topic.id);
+    const probe = codeSubmitted || (conceptual && cls.kind === 'no_outcome') ? 'reasoning' : cls.kind;
+    return { action: "follow_up", topic, topicIndex: idx, isLast, probe };
   }
 
   // Done with this topic. Close it AND open the next one in a single move --
@@ -359,6 +375,35 @@ function extractMentions(history, limit = 8) {
   return out.slice(-limit);
 }
 
+// Presentation is server-owned and saved with the actual question. It is never
+// generated from model memory, and is not part of the question evaluated later.
+function questionPresentation(history, question) {
+  if (!history.length) {
+    return { introduction: "Hi, I'm Alex, your AI practice interviewer. Welcome. Take your time, and feel free to skip if you get stuck. Let's get started.",
+      acknowledgement: '', turnKind: 'opening' };
+  }
+  const previous = history[history.length - 1];
+  const kind = classifyAnswer(previous.answer).kind;
+  let acknowledgement;
+  if (kind === 'no_answer') acknowledgement = "No problem. We can move on.";
+  else if (previous.codingProblem) acknowledgement = hasSubmittedCode(previous.answer)
+    ? 'Thanks for sharing your code.' : 'Thanks for walking me through your approach.';
+  else if (question.isFollowUp) {
+    const firstClause = String(previous.answer || '').trim().split(/[.!?\n]/)[0].trim();
+    let focus = firstClause;
+    if (focus.length > 100) {
+      focus = focus.slice(0, 80).replace(/\s+\S*$/, '');
+      while (/\b(?:a|an|the|and|or|for|to|with|of|in|on|at|by|from|into|as|because)$/i.test(focus)) {
+        focus = focus.replace(/\s+\S+$/, '');
+      }
+      focus += '…';
+    }
+    acknowledgement = focus.length >= 12 ? `Thanks. You mentioned “${focus}”.` : 'Thanks for sharing that.';
+  } else acknowledgement = ['Thanks for sharing that.', "Thanks, I've noted that.", 'Thank you for that context.'][history.length % 3];
+  return { introduction: '', acknowledgement,
+    turnKind: question.isFollowUp ? 'follow_up' : question.topicId === 'closing' ? 'closing' : 'topic_transition' };
+}
+
 module.exports = {
   MAX_FOLLOW_UPS_PER_TOPIC,
   DURATION_PRESETS,
@@ -371,5 +416,7 @@ module.exports = {
   decideNextMove,
   applyMove,
   extractMentions,
+  questionPresentation,
+  hasSubmittedCode,
   wordCount,
 };

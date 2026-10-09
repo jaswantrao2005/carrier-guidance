@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import apiClient from '../api/client';
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 
 interface User {
   id: string;
@@ -25,6 +26,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,18 +42,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const fetchUserProfile = async (currentToken: string) => {
+    setProfileError(false);
     try {
       // The API client interceptor will attach the token
       const response = await apiClient.get('auth/profile');
-      if (response.data.success) {
+      if (response.data.success && response.data.user) {
         setUser(response.data.user);
       } else {
         // Token might be invalid or expired
         handleLogout();
       }
     } catch (error) {
-      console.error('Error fetching user profile', error);
-      handleLogout();
+      if (axios.isAxiosError(error) && error.response?.status === 401) handleLogout();
+      else setProfileError(true);
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout: handleLogout, isLoading }}>
-      {children}
+      {profileError ? <div role="alert" className="p-8 text-center space-y-4"><p>Could not connect to your account. Your login and saved interviews are retained.</p><button className="underline" onClick={() => fetchUserProfile(token || '')}>Retry connection</button></div> : children}
     </AuthContext.Provider>
   );
 };

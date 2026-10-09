@@ -316,6 +316,12 @@ class FacePresenceAnalyzer:
             stability=stability,
             resolution=resolution,
         )
+        if len(times) >= cfg.max_frames:
+            quality.reliable = False
+            quality.reason = (
+                f"The recording reached the analysis limit of {cfg.max_frames} sampled frames. "
+                "The entire recording was not verified; review it manually."
+            )
 
         signals: list[Signal] = []
         if quality.reliable:

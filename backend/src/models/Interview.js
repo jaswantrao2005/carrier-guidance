@@ -2,6 +2,9 @@ const mongoose = require('mongoose');
 
 const interviewSchema = new mongoose.Schema(
   {
+    sessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'InterviewSession', index: true },
+    consent: mongoose.Schema.Types.Mixed,
+    presenceReview: mongoose.Schema.Types.Mixed,
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -58,7 +61,6 @@ const interviewSchema = new mongoose.Schema(
       communication: { type: Number, default: 0 },
       technicalKnowledge: { type: Number, default: 0 },
       problemSolving: { type: Number, default: 0 },
-      confidence: { type: Number, default: 0 },
       resumeKnowledge: { type: Number, default: 0 },
       behavioral: { type: Number, default: 0 },
       roleReadiness: { type: Number, default: 0 },
@@ -112,7 +114,6 @@ const interviewSchema = new mongoose.Schema(
     integrityStatus: {
       type: String,
       enum: ['Clean', 'Warnings', 'Terminated'],
-      default: 'Clean',
     },
     integrityWarningsCount: {
       type: Number,

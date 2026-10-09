@@ -30,7 +30,7 @@ export const RoadmapChatbot: React.FC<RoadmapChatbotProps> = ({ resumeContext })
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
     const userMessage = input.trim();
     setInput('');
@@ -165,6 +165,7 @@ export const RoadmapChatbot: React.FC<RoadmapChatbotProps> = ({ resumeContext })
             className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full pl-5 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 text-slate-900 dark:text-white"
           />
           <button 
+            aria-label="Send message"
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
             className="absolute right-1.5 p-2 bg-primary-500 text-white rounded-full hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:hover:bg-primary-500"

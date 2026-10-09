@@ -9,6 +9,8 @@ const {
   decideNextMove,
   applyMove,
   extractMentions,
+  questionPresentation,
+  hasSubmittedCode,
 } = require('../src/services/interview/conversation');
 
 // ---------------------------------------------------------------------------
@@ -151,12 +153,13 @@ test('a fresh topic opens with a main question', () => {
 
 test('a vague answer triggers a follow-up on the same topic', () => {
   let plan = buildTopicPlan('Technical Interview', 'standard');
+  plan[0] = { ...plan[0], covered: true };
   plan = applyMove(plan, decideNextMove(plan, [], 16));
 
   const move = decideNextMove(plan, [{ question: 'q1', answer: weAnswer }], 16);
   assert.equal(move.action, 'follow_up');
   assert.equal(move.probe, 'vague_we');
-  assert.equal(move.topicIndex, 0, 'must stay on the same topic');
+  assert.equal(move.topicIndex, 1, 'must stay on the substantive topic');
 });
 
 test('a complete answer moves the interview on', () => {
@@ -192,6 +195,7 @@ test('a thin answer is not probed either', () => {
 
 test('probing is capped -- it cannot drill one topic forever', () => {
   let plan = buildTopicPlan('Technical Interview', 'standard');
+  plan[0] = { ...plan[0], covered: true };
   const history = [];
 
   plan = applyMove(plan, decideNextMove(plan, history, 16));
@@ -214,6 +218,8 @@ test('follow-ups never eat the budget needed to open remaining topics', () => {
   // 5 topics, 5 questions allowed -> every question must open a new topic.
   let plan = buildTopicPlan('Technical Interview', 'standard');
   const history = [];
+  plan = applyMove(plan, decideNextMove(plan, history, 5));
+  history.push({ question: 'intro', answer: richAnswer });
   plan = applyMove(plan, decideNextMove(plan, history, 5));
   history.push({ question: 'main', answer: weAnswer });
 
@@ -331,4 +337,76 @@ test('mention list stays small enough for the prompt', () => {
 
 test('mentions handle an empty history', () => {
   assert.deepEqual(extractMentions([]), []);
+});
+
+test('concise substantive work invites a clarification while filler and uncertainty move on', () => {
+  const answer = 'I built a React dashboard with paginated filters and a Node API.';
+  assert.equal(classifyAnswer(answer).kind, 'needs_detail');
+  assert.equal(classifyAnswer('I built a Redis cache that reduced latency by 40%.').kind, 'complete');
+  for (const value of ['I used Python.', 'Okay, yes.', 'I do not know', 'I have no experience with that',
+    'Please skip this question', "I'd like to skip", "I’m not sure how to answer"]) {
+    assert.ok(['thin', 'no_answer'].includes(classifyAnswer(value).kind), value);
+  }
+  let plan = buildTopicPlan('Technical Interview', 'quick');
+  plan[0] = { ...plan[0], covered: true };
+  plan = applyMove(plan, decideNextMove(plan, [], 6));
+  const move = decideNextMove(plan, [{ answer }], 6);
+  assert.equal(move.action, 'follow_up');
+  assert.equal(move.probe, 'needs_detail');
+  assert.equal(MAX_FOLLOW_UPS_PER_TOPIC, 1);
+});
+
+test('opening background and closing answers never trigger STAR probing', () => {
+  let plan = buildTopicPlan('Technical Interview', 'quick');
+  plan = applyMove(plan, decideNextMove(plan, [], 6));
+  const background = 'I built a React dashboard with paginated filters and a Node API.';
+  assert.equal(decideNextMove(plan, [{ answer: background }], 6).action, 'new_topic');
+  plan = plan.map((topic, index) => ({ ...topic, covered: index < plan.length - 1,
+    questionsAsked: index === plan.length - 1 ? 1 : topic.questionsAsked }));
+  assert.equal(decideNextMove(plan, [{ answer: weAnswer }], 6).action, 'finish');
+});
+
+test('concept and code probes ask about reasoning rather than business result metrics', () => {
+  const conceptual = [{ id: 'fundamentals', questionsAsked: 1, followUpsUsed: 0, covered: false },
+    { id: 'closing', questionsAsked: 0, followUpsUsed: 0, covered: false }];
+  const answer = 'A database index uses a separate lookup structure to narrow down matching rows. The query planner chooses an index based on estimates for the filters and order, while the database maintains that structure as rows change.';
+  assert.equal(decideNextMove(conceptual, [{ answer }], 6).probe, 'reasoning');
+  const coding = [{ id: 'problem_1', questionsAsked: 1, followUpsUsed: 0, covered: false }, conceptual[1]];
+  assert.equal(decideNextMove(coding, [{ answer: 'const sum = values.reduce((a,b)=>a+b,0);' }], 6).probe, 'reasoning');
+  assert.equal(decideNextMove(coding, [{ answer: 'I do not know' }], 6).action, 'new_topic');
+});
+
+test('acknowledgements quote only a short actual phrase and keep greetings separate from questions', () => {
+  const opening = questionPresentation([], { topicId: 'intro' });
+  assert.equal(opening.turnKind, 'opening');
+  assert.match(opening.introduction, /Alex, your AI practice interviewer/);
+  const answer = 'I built a React dashboard with paginated filters and a Node API.';
+  const followUp = questionPresentation([{ answer }], { topicId: 'project_depth', isFollowUp: true });
+  assert.equal(followUp.turnKind, 'follow_up');
+  assert.equal(followUp.introduction, '');
+  assert.match(followUp.acknowledgement, /I built a React dashboard with paginated filters/);
+  assert.ok(followUp.acknowledgement.length < 100);
+  assert.ok(!/great|excellent|correct|score|impressive/i.test(followUp.acknowledgement));
+  assert.equal(questionPresentation([{ answer: 'skip' }], { topicId: 'closing' }).acknowledgement, 'No problem. We can move on.');
+  assert.equal(questionPresentation([{ answer: 'const total=0;', codingProblem: { id: 'sum_integers' } }], { isFollowUp: true }).acknowledgement,
+    'Thanks for sharing your code.');
+  assert.equal(questionPresentation([{ answer: 'I would add each value to a running total.', codingProblem: { id: 'sum_integers' } }], { isFollowUp: true }).acknowledgement,
+    'Thanks for walking me through your approach.');
+  assert.ok(!questionPresentation([{ answer }], { topicId: 'closing' }).acknowledgement.includes('You mentioned'));
+  const wholeClause = 'Our team built the Atlas React dashboard for internal support';
+  assert.ok(questionPresentation([{ answer: wholeClause }], { isFollowUp: true }).acknowledgement.includes(`“${wholeClause}”`));
+  const longer = `${wholeClause} teams with many complicated workflows and different regional reporting needs across the company`;
+  const excerpt = questionPresentation([{ answer: longer }], { isFollowUp: true }).acknowledgement;
+  assert.match(excerpt, /…/);
+  assert.ok(!/\b(for|the|with|and)…/.test(excerpt));
+});
+
+test('submitted-code markers recognize editor language labels even for invalid code', () => {
+  for (const marker of ['Submitted code:', 'Submitted code (javascript):', 'Submitted code (java):', 'Submitted code (cpp):']) {
+    const answer = `${marker}\nthis is not valid source code`;
+    assert.equal(hasSubmittedCode(answer), true);
+    assert.equal(questionPresentation([{ answer, codingProblem: { id: 'sum_integers' } }], { isFollowUp: true }).acknowledgement,
+      'Thanks for sharing your code.');
+  }
+  assert.equal(hasSubmittedCode('I would use a running total to add up the values.'), false);
 });

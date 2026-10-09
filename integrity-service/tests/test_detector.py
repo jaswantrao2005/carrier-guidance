@@ -295,3 +295,13 @@ def test_missing_file_raises(analyzer):
 def test_missing_model_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         FacePresenceAnalyzer(model_path=tmp_path / "nope.tflite")
+
+
+def test_frame_limit_never_reports_a_partial_review_as_complete(tmp_path):
+    path = _write_video(tmp_path / "limited.mp4", Spec(6, lambda s: [(320, 240, 1.0)]))
+    analyzer = FacePresenceAnalyzer(config=Config(max_frames=4))
+    payload = analyzer.analyze(path).to_dict()
+    assert payload["quality"]["frames_analysed"] == 4
+    assert payload["suppressed"] is True
+    assert payload["signals"] == []
+    assert "entire recording was not verified" in payload["quality"]["reason"]
