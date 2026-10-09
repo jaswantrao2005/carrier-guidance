@@ -16,8 +16,13 @@ const app = express();
 
 // Middleware
 app.disable('x-powered-by');
-const origins = (process.env.FRONTEND_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000').split(',').map(value => value.trim());
-app.use(cors({ origin: origins }));
+const frontendOrigins = new Set([
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://carrier-guidance-two.vercel.app',
+  ...(process.env.FRONTEND_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean),
+]);
+app.use(cors({ origin: [...frontendOrigins] }));
 app.use(express.json({ limit: '512kb' }));
 app.use((req, res, next) => {
   if (req.body == null) req.body = {};
