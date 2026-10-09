@@ -16,6 +16,23 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+For a fresh Debian/Ubuntu setup, install the native runtime libraries too. The
+Linux MediaPipe wheel loads `libEGL.so.1` and `libGLESv2.so.2` even for CPU-only
+inference. Installing the Python requirements alone does not supply these files.
+
+```bash
+cd integrity-service
+sudo apt-get update
+sudo apt-get install --no-install-recommends -y python3-venv libegl1 libgles2
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python scripts/fetch_model.py
+.venv/bin/python -m pytest -q
+```
+
+The GitHub Actions Python job installs the same native libraries before running
+the full detector test suite. No display server or GPU is required.
+
 From the `integrity-service` directory, start the private service:
 
 ```powershell

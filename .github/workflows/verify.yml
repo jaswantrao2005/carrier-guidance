@@ -33,6 +33,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install MediaPipe native runtime libraries
+        # The Linux MediaPipe wheel links EGL/GLES even for CPU-only inference.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libegl1 libgles2
       - run: pip install -r requirements-dev.txt
         working-directory: integrity-service
       - run: python scripts/fetch_model.py

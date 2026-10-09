@@ -46,7 +46,7 @@ A real local Node-to-Python shared-volume check passed on port 8001 with synthet
 
 The frontend full audit still has seven findings in the Tailwind 3 build-tool chain. The backend audit has three moderate findings in the Mammoth/argparse/sprintf-js chain. No forced dependency downgrade was applied. See the [ordered remaining work](IMPLEMENTATION_PLAN.md#remaining-work-ordered-for-deployment).
 
-Filesystem and MongoDB updates are not one transaction. Known-file deletion, upload/discard race checks and junction/path containment passed. The read-only storage audit found zero local issues. Automated crash repair, retention, storage monitoring and cleanup of copies in other browsers remain deployment work. The GitHub workflow is added but has not run remotely.
+Filesystem and MongoDB updates are not one transaction. Known-file deletion, upload/discard race checks and junction/path containment passed. The read-only storage audit found zero local issues. Automated crash repair, retention, storage monitoring and cleanup of copies in other browsers remain deployment work. The initial checks were local; subsequent GitHub Actions results are recorded below.
 
 ## 9 October 2026: Gemini connection
 
@@ -144,3 +144,9 @@ Further production checks passed controlled permission denial with readable fall
 Independent round-two visual review passed the corrected stage and responsive layouts. Safe evidence is in `voice-first-round2-evidence.json`; failures deliberately injected by the helper are separate from the real Gemini speech/transcription check above. Final health checks passed for the frontend, backend/MongoDB, storage, AI/coding configuration and Python review service. Physical devices, other browsers and multilingual recognition remain unverified.
 
 The completed round-two run passed 13 browser checks with zero page errors. Interviewer playback stopped active answer capture; Stop prevented automatic listening after a delayed playback end. Pause/leave during pending transcription stopped tracks and ignored late text without an answer POST. Controlled WebGL unavailability displayed the labelled still portrait, and the dark/reduced-motion screen rendered. The two owned browser helpers exited and their browsers closed. Only disposable test sessions were removed, with removal confirmed in the evidence; the original demo account/report and managed app remain available.
+
+## GitHub Actions Linux runtime correction on 9 October
+
+The initial [push run](https://github.com/jaswantrao2005/carrier-guidance/actions/runs/37889175585) and [pull-request run](https://github.com/jaswantrao2005/carrier-guidance/actions/runs/37891729605) passed the Node job. Both Python jobs installed the requirements and downloaded the model, then reported 10 passing and 8 failing tests. Every failure came from loading MediaPipe's native library: `libEGL.so.1` was absent from the Ubuntu runner.
+
+Inspection of the published MediaPipe 1.1.0 Linux wheel confirmed direct dependencies on `libEGL.so.1` and `libGLESv2.so.2`. The workflow now installs Ubuntu's `libegl1` and `libgles2` packages before Python dependencies, and the service README includes the matching Linux setup. The full 18-test suite remains enabled. The local suite passed again, and workflow syntax/triggers were checked. Fresh Linux results are available in [PR #1 checks](https://github.com/jaswantrao2005/carrier-guidance/pull/1/checks).

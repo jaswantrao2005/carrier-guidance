@@ -37,7 +37,7 @@ Assessment date: 8 October 2026. Local base: `4e9e42c`, branch `stage-0-safety-f
 | 4 | Honest AI outputs, normalized evaluation, coding fixtures and sandbox integration | Malformed/provider failure never fabricates success; original questions/answers survive scoring; wrong code fails cases | Implemented; Gemini live checks with synthetic content and live Judge0 checks passed in all four languages, including wrong answers and compiler errors |
 | 5 | Auth/input hardening, bounded requests, upload ownership/cleanup, report deletion | Invalid bodies return 4xx; cross-user operations fail; report and media deletion work | Implemented; API and report deletion browser checks passed |
 | 6 | Connect optional integrity analysis and expose useful provider availability/errors | Service failure leaves a usable report; analysis never changes scores | Implemented; real Node-to-Python review and score-invariance checks passed |
-| 7 | Documentation, dependency updates, API integration tests, browser checks and CI | Backend/Python tests, typecheck, production build and real browser recovery flow pass | Local checks passed; CI workflow added, not yet run on GitHub |
+| 7 | Documentation, dependency updates, API integration tests, browser checks and CI | Backend/Python tests, typecheck, production build and real browser recovery flow pass | Local checks passed; GitHub Node checks passed; missing Linux detector libraries are now declared in the Python job. Current results are in PR #1 |
 
 ## Verification strategy
 
