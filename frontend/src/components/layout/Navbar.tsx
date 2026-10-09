@@ -14,14 +14,14 @@ export const Navbar = () => {
 
   const isAuthPage = pathname === '/login' || pathname === '/register';
 
-  if (isAuthPage) return null;
+  if (isAuthPage || pathname.startsWith('/interview/')) return null;
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 dark:border-slate-800/60 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 min-h-16 py-3 lg:py-0 flex flex-col lg:flex-row items-center justify-between gap-2 lg:gap-0">
         
         {/* Logo */}
-        <Link href="/" className="flex items-center space-x-2.5 group">
+        <Link href="/" className="flex shrink-0 items-center space-x-2.5 group">
           <motion.div 
             whileHover={{ scale: 1.05, rotate: 3 }}
             whileTap={{ scale: 0.95 }}
@@ -35,7 +35,7 @@ export const Navbar = () => {
         </Link>
 
         {/* Navigation */}
-        <nav className="flex items-center space-x-4">
+        <nav className="w-full lg:w-auto flex flex-wrap lg:flex-nowrap items-center justify-center gap-1 lg:gap-4" aria-label="Main navigation">
           {!isLoading && user ? (
             <>
               <Link 

@@ -108,7 +108,7 @@ export default function LandingPage() {
                 variants={itemVariants}
                 className="text-lg md:text-xl text-slate-600 dark:text-slate-300 mb-8 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal"
               >
-                Upload your resume and receive instant, AI-driven feedback. Get an accurate ATS compatibility score, spot missing skills, and build custom roadmaps with your personal Groq AI mentor.
+                Upload your resume and receive AI feedback. Get an estimated ATS compatibility score, spot missing skills, and build custom roadmaps with your AI career mentor.
               </motion.p>
 
               <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-10">
@@ -314,9 +314,9 @@ export default function LandingPage() {
                   </p>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center text-xs font-semibold text-primary-600 dark:text-primary-400 group-hover:translate-x-1 transition-transform">
-                  Learn more <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                </div>
+                <Link href={feature.title.includes("Interview") ? "/mock-interview" : "/resume-upload"} className="mt-6 pt-4 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center text-xs font-semibold text-primary-600 dark:text-primary-400 group-hover:translate-x-1 transition-transform">
+                  Try this feature <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+                </Link>
               </motion.div>
             ))}
           </motion.div>
@@ -340,7 +340,7 @@ export default function LandingPage() {
               </h2>
 
               <p className="text-slate-300 text-base sm:text-lg max-w-xl mx-auto font-normal leading-relaxed">
-                Join thousands of professionals using AI to refine their resume, conquer ATS screeners, and land high-paying roles.
+                Review your resume, practice interviews, and plan your next learning steps with AI feedback.
               </p>
 
               <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">

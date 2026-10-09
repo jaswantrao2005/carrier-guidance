@@ -95,15 +95,6 @@ export default function LoginPage() {
               <Lock className="w-5 h-5 absolute left-3 top-[34px] text-slate-400 pointer-events-none" />
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                <span className="text-slate-600 dark:text-slate-400">Remember me</span>
-              </label>
-              <Link href="#" className="text-primary-600 hover:text-primary-500 font-medium transition-colors">
-                Forgot password?
-              </Link>
-            </div>
 
             <Button
               type="submit"

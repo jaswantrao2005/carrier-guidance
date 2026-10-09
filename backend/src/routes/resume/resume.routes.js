@@ -31,7 +31,7 @@ const handleResumeUpload = (req, res, next) => {
   });
 };
 
-router.post("/upload", authMiddleware, handleResumeUpload, uploadResume);
+router.post("/upload", authMiddleware, require('../../middlewares/quota.middleware').quota('resume analyses', 20), handleResumeUpload, uploadResume);
 router.get("/history", authMiddleware, getUserResumeHistory);
 router.get("/:id", authMiddleware, getResumeById);
 router.delete("/:id", authMiddleware, deleteResume);

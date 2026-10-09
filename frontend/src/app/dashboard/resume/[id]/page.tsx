@@ -20,6 +20,7 @@ export default function ResumeDetailPage() {
   const [resume, setResume] = useState<any>(null);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!isAuthLoading && !user) {
@@ -66,6 +67,8 @@ export default function ResumeDetailPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
         </Link>
+
+
       </div>
     );
   }
@@ -81,6 +84,13 @@ export default function ResumeDetailPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
         </Link>
+
+        <button className="ml-4 text-red-600 text-sm underline disabled:opacity-50" disabled={deleting} onClick={async () => {
+          if (!window.confirm('Delete this resume and its analysis? Existing interview snapshots are retained until those interviews are deleted.')) return;
+          setDeleting(true);
+          try { await apiClient.delete(`resume/${resumeId}`); router.push('/dashboard'); }
+          catch { setError('Could not delete the resume. Please retry.'); setDeleting(false); }
+        }}>{deleting ? 'Deleting...' : 'Delete resume'}</button>
 
         {/* Header */}
         <div className="mb-10">
