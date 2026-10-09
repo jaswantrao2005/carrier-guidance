@@ -3,7 +3,6 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { BrainCircuit, LogOut, LayoutDashboard, UploadCloud, Mic } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
@@ -13,30 +12,34 @@ export const Navbar = () => {
   const pathname = usePathname();
 
   const isAuthPage = pathname === '/login' || pathname === '/register';
+  const isCompactHome = pathname === '/';
 
   if (isAuthPage || pathname.startsWith('/interview/')) return null;
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 dark:border-slate-800/60 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 min-h-16 py-3 lg:py-0 flex flex-col lg:flex-row items-center justify-between gap-2 lg:gap-0">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 dark:border-slate-800/60 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl">
+      <div className={`max-w-7xl mx-auto px-4 sm:px-6 min-h-16 flex items-center justify-between ${isCompactHome ? 'flex-row gap-2 py-0' : 'flex-col lg:flex-row gap-2 lg:gap-0 py-3 lg:py-0'}`}>
         
         {/* Logo */}
-        <Link href="/" className="flex shrink-0 items-center space-x-2.5 group">
-          <motion.div 
-            whileHover={{ scale: 1.05, rotate: 3 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 via-violet-600 to-indigo-600 flex items-center justify-center shadow-md group-hover:shadow-primary-500/30 transition-all border border-white/20"
+        <Link href="/" className="flex shrink-0 items-center space-x-2.5 group rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">
+          <div
+            aria-hidden="true"
+            className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 via-violet-600 to-indigo-600 flex items-center justify-center shadow-md group-hover:shadow-primary-500/30 group-hover:rotate-3 group-hover:scale-105 transition-transform border border-white/20"
           >
             <BrainCircuit className="w-5 h-5 text-white" />
-          </motion.div>
+          </div>
           <span className="font-heading font-extrabold text-xl text-slate-900 dark:text-white tracking-tight">
             Career<span className="text-primary-500">AI</span>
           </span>
         </Link>
 
         {/* Navigation */}
-        <nav className="w-full lg:w-auto flex flex-wrap lg:flex-nowrap items-center justify-center gap-1 lg:gap-4" aria-label="Main navigation">
-          {!isLoading && user ? (
+        <nav className={`${isCompactHome ? 'w-auto flex-nowrap gap-1 sm:gap-3' : 'w-full lg:w-auto flex-wrap lg:flex-nowrap gap-1 lg:gap-4'} flex items-center justify-center`} aria-label="Main navigation">
+          {!isLoading && user ? isCompactHome ? (
+            <Link href="/dashboard" className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-primary-700 dark:text-primary-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">
+              Dashboard
+            </Link>
+          ) : (
             <>
               <Link 
                 href="/dashboard" 
@@ -86,12 +89,18 @@ export const Navbar = () => {
             </>
           ) : !isLoading ? (
             <>
-              <Link href="/login" className="text-sm font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition-colors px-3 py-2">
+              <Link href="/login" className={`${isCompactHome ? 'max-[360px]:hidden' : ''} text-sm font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition-colors px-2 sm:px-3 py-2 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500`}>
                 Log in
               </Link>
-              <Link href="/register">
-                <Button size="sm" variant="primary" className="rounded-xl shadow-md">Get Started</Button>
-              </Link>
+              {isCompactHome ? (
+                <Link href="/register" className="inline-flex h-9 items-center justify-center rounded-lg bg-primary-600 px-3 sm:px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">
+                  Get started
+                </Link>
+              ) : (
+                <Link href="/register">
+                  <Button size="sm" variant="primary" className="rounded-xl shadow-md">Get Started</Button>
+                </Link>
+              )}
             </>
           ) : null}
         </nav>
