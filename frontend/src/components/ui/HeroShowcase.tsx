@@ -62,7 +62,7 @@ export const HeroShowcase: React.FC = () => {
           </div>
           <div>
             <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">AI Engine</div>
-            <div className="text-xs sm:text-sm font-bold text-primary-300">Gemini Powered</div>
+            <div className="text-xs sm:text-sm font-bold text-primary-300">AI Powered</div>
           </div>
         </motion.div>
 

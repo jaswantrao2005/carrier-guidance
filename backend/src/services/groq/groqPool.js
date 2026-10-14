@@ -8,7 +8,7 @@ function getGroqKeys() {
     .map((k) => k.trim())
     .filter(Boolean);
 }
-let currentKeyIndex = 0;
+let currentKeyIndex = 0;
 
 /**
  * Executes a Groq API request with automatic key rotation on 429/quota limits.
@@ -18,15 +18,16 @@ async function callGroqWithRotation(apiCallFn) {
   const keys = getGroqKeys();
 
   if (keys.length === 0) {
-    throw new Error("No Groq API keys configured in .env");
+    throw Object.assign(new Error("AI service is not configured. Ask the operator to configure GROQ_API_KEY."), { statusCode: 503 });
   }
 
   let attempts = 0;
-  const maxAttempts = keys.length;
+  const maxAttempts = Math.min(keys.length, 2);
 
   while (attempts < maxAttempts) {
+    currentKeyIndex %= keys.length;
     const activeKey = keys[currentKeyIndex];
-    const groq = new Groq({ apiKey: activeKey });
+    const groq = new Groq({ apiKey: activeKey, timeout: 45000, maxRetries: 0 });
 
     try {
       return await apiCallFn(groq, activeKey);
@@ -39,7 +40,7 @@ async function callGroqWithRotation(apiCallFn) {
 
       if (isRateLimit && keys.length > 1) {
         console.warn(
-          `[GROQ POOL] Key (${activeKey.substring(0, 10)}...) rate-limited. Rotating to next key...`
+          '[GROQ POOL] Rate limit reached; trying the next configured credential.'
         );
         currentKeyIndex = (currentKeyIndex + 1) % keys.length;
         attempts++;

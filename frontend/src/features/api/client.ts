@@ -1,9 +1,8 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').endsWith('/api') 
-    ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api') + '/'
-    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '') + '/api/',
+  baseURL: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/+$/, '').replace(/\/api$/, '') + '/api/',
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },

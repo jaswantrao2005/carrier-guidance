@@ -1,0 +1,4 @@
+# Preserve binary assets across platforms and avoid text diffs for PDFs.
+*.pdf binary
+*.glb binary
+*.png binary

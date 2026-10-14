@@ -48,7 +48,7 @@ export default function ResumeUploadPage() {
     } catch (error: any) {
       console.error('Upload Error:', error);
       setGlobalError(
-        error.response?.data?.message || 'Failed to upload and analyze the resume. Please try again.'
+        error.response?.data?.error || error.response?.data?.message || 'Failed to upload and analyze the resume. Please try again.'
       );
       setIsUploading(false);
     }
@@ -94,8 +94,9 @@ export default function ResumeUploadPage() {
             Unlock your career potential
           </h1>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            Upload your resume to receive an instant ATS score, missing skills gap analysis, and tailored career role recommendations powered by Gemini.
-          </p>
+            Upload your resume for an AI estimate of resume quality, skill gaps, and career role suggestions. Resume text is sent to {process.env.NEXT_PUBLIC_AI_PROVIDER === 'groq' ? 'Groq' : 'Gemini'} for analysis and saved in your account.
+            </p>
+            {process.env.NEXT_PUBLIC_AI_PROVIDER !== 'groq' && <p className="text-sm text-slate-500">On Gemini's free tier, Google may use submitted content to improve its products. <a className="underline" href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer">Read Google's data-use terms</a>.</p>}
         </motion.div>
 
         {globalError && (

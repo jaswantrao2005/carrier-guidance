@@ -1,14 +1,25 @@
-"use client";
+'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { BrainCircuit, Play, ArrowRight, Bell } from 'lucide-react';
 import { Caveat } from 'next/font/google';
+import { useAuth } from '@/features/auth/AuthContext';
 
 const caveat = Caveat({ subsets: ['latin'], weight: '700' });
 
 export default function MinimalLandingPage() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) router.replace('/dashboard');
+  }, [isLoading, router, user]);
+
+  if (user) return null;
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans relative overflow-hidden selection:bg-indigo-500/20">
       
@@ -212,5 +223,6 @@ export default function MinimalLandingPage() {
         <div className="h-32"></div>
       </div>
     </div>
+
   );
 }

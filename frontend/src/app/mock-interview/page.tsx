@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/features/auth/AuthContext';
 import apiClient from '@/features/api/client';
-import { InterviewRoom } from '@/components/ui/InterviewRoom';
+import type { ApiResult, InterviewSession } from '@/features/interview/types';
+import { deleteLocalSession } from '@/features/interview/storage';
+import { errorMessage } from '@/features/api/errors';
+import axios from 'axios';
 import { Button } from '@/components/ui/Button';
 import { Calendar, Play, FileText, ChevronRight, Sparkles, Award, Loader2, UploadCloud, X, HelpCircle, Info, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
@@ -15,7 +18,11 @@ interface ResearchBrief {
   keyProducts: string[];
   recentStrategy: string;
   focusAreas: string[];
+  sources?: string[];
+  retrievedAt?: string;
 }
+
+const aiProviderName = process.env.NEXT_PUBLIC_AI_PROVIDER === 'groq' ? 'Groq' : 'Gemini';
 
 export default function MockInterviewPage() {
   const { user, isLoading } = useAuth();
@@ -28,6 +35,7 @@ export default function MockInterviewPage() {
   
   // Interview Type state
   const [interviewType, setInterviewType] = useState<string>('Overall Interview');
+  const [durationPreset, setDurationPreset] = useState<string>('standard');
   
   // Resume Selection state
   const [resumes, setResumes] = useState<any[]>([]);
@@ -37,7 +45,7 @@ export default function MockInterviewPage() {
   
   // Job Description state
   const [jobDescriptionText, setJobDescriptionText] = useState<string>('');
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; size: number; status: 'uploading' | 'success' | 'error'; error?: string }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; text?: string; name: string; size: number; status: 'uploading' | 'success' | 'error'; error?: string }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Company details state
@@ -48,8 +56,14 @@ export default function MockInterviewPage() {
   const [researchBrief, setResearchBrief] = useState<ResearchBrief | null>(null);
   const [researchError, setResearchError] = useState<string | null>(null);
   const [showBriefScreen, setShowBriefScreen] = useState<boolean>(false);
-  const [isInterviewing, setIsInterviewing] = useState<boolean>(false);
-  const [recordingConsent, setRecordingConsent] = useState<boolean | null>(null);
+  const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  const [launching, setLaunching] = useState(false);
+  const launchInFlight = useRef(false);
+  const [setupError, setSetupError] = useState('');
+  const [storeTranscript, setStoreTranscript] = useState(false);
+  const [recordAudio, setRecordAudio] = useState(false);
+  const [recordVideo, setRecordVideo] = useState(false);
+  const [analyzeVideo, setAnalyzeVideo] = useState(false);
 
   // Experience setup state
   const [experienceLevel, setExperienceLevel] = useState<'fresher' | 'experienced'>('fresher');
@@ -61,10 +75,6 @@ export default function MockInterviewPage() {
 
   // Permission states
   const [showPermissionScreen, setShowPermissionScreen] = useState<boolean>(false);
-  const [micPermission, setMicPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
-  const [cameraPermission, setCameraPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
-  const [userStream, setUserStream] = useState<MediaStream | null>(null);
-  const permissionVideoRef = useRef<HTMLVideoElement>(null);
 
   const roles = [
     'Software Engineer',
@@ -78,6 +88,16 @@ export default function MockInterviewPage() {
     'DevOps / Cloud',
     'Product Management',
     'Custom Role'
+  ];
+
+  // Interview length is a question BUDGET with an estimated time, not a hard clock --
+  // the interviewer follows up on answers, so the exact count varies. Times are
+  // deliberately over-quoted: candidates react better to an interview that finishes
+  // early than one that overruns.
+  const DURATION_OPTIONS = [
+    { id: 'quick',    label: 'Quick practice',     time: 'About 10 minutes', detail: '3 topics · warm-up' },
+    { id: 'standard', label: 'Standard interview', time: 'About 25 minutes', detail: '5 topics · most realistic' },
+    { id: 'full',     label: 'Full interview',     time: 'About 45 minutes', detail: '8 topics · in depth' },
   ];
 
   const interviewTypes = [
@@ -117,6 +137,8 @@ export default function MockInterviewPage() {
       }
     };
     fetchHistory();
+    if (user) apiClient.get<ApiResult<InterviewSession | null>>('interview/session/active')
+      .then(response => setActiveSession(response.data.data)).catch(e => setSetupError(errorMessage(e)));
 
     const fetchResumes = async () => {
       if (!user) return;
@@ -132,22 +154,6 @@ export default function MockInterviewPage() {
     };
     fetchResumes();
   }, [user]);
-
-  // Clean up media stream on unmount
-  useEffect(() => {
-    return () => {
-      if (userStream) {
-        userStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [userStream]);
-
-  // Automatically request permission when permission screen opens
-  useEffect(() => {
-    if (showPermissionScreen) {
-      requestPermissions();
-    }
-  }, [showPermissionScreen]);
 
   // Experience Warning Validation
   useEffect(() => {
@@ -167,42 +173,23 @@ export default function MockInterviewPage() {
     }
   }, [totalExperienceYears, employmentHistory, experienceLevel]);
 
-  const requestPermissions = async () => {
-    setMicPermission('pending');
-    setCameraPermission('pending');
-    
-    // Stop any existing stream tracks first
-    if (userStream) {
-      userStream.getTracks().forEach(track => track.stop());
-      setUserStream(null);
-    }
+  const savedSessionAction = activeSession?.status === 'evaluating' ? 'View interview progress' : 'Resume interview';
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      setMicPermission('granted');
-      setCameraPermission('granted');
-      setUserStream(stream);
-      setTimeout(() => {
-        if (permissionVideoRef.current) {
-          permissionVideoRef.current.srcObject = stream;
-        }
-      }, 150);
-    } catch (err) {
-      console.warn("Combined Camera/Mic request failed, trying audio only:", err);
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setMicPermission('granted');
-        setCameraPermission('denied');
-        setUserStream(audioStream);
-      } catch (audioErr) {
-        console.error("Audio permission failed:", audioErr);
-        setMicPermission('denied');
-        setCameraPermission('denied');
-      }
-    }
+  const openRoom = (id: string) => {
+    try { router.push(`/interview/${encodeURIComponent(id)}`); return true; }
+    catch (e) { setSetupError(errorMessage(e, 'The interview room could not open. Please retry.')); return false; }
+  };
+
+  const resumeSession = () => {
+    if (!activeSession || launchInFlight.current) return;
+    launchInFlight.current = true; setLaunching(true); setSetupError('');
+    if (!openRoom(activeSession.id)) { launchInFlight.current = false; setLaunching(false); }
   };
 
   const handleStartProcess = async () => {
+    if (launchInFlight.current) return;
+    if (activeSession) { resumeSession(); return; }
+    if (uploadedFiles.some(file => file.status === 'uploading')) { setSetupError('Wait for job description uploads to finish.'); return; }
     // Validation for experienced
     if (experienceLevel === 'experienced') {
       const total = Number(totalExperienceYears);
@@ -242,22 +229,41 @@ export default function MockInterviewPage() {
   };
 
   const handleStartInterview = () => {
+    if (launchInFlight.current) return;
+    if (activeSession) { resumeSession(); return; }
     setShowBriefScreen(false);
-    setRecordingConsent(null);
+
     setShowPermissionScreen(true);
   };
 
-  const handleFinishInterview = (reportId: string) => {
-    setIsInterviewing(false);
-    setShowBriefScreen(false);
-    setShowPermissionScreen(false);
-    setResearchBrief(null);
-    setResearchError(null);
-    if (userStream) {
-      userStream.getTracks().forEach(track => track.stop());
-      setUserStream(null);
+  const launchSession = async () => {
+    if (activeSession) { resumeSession(); return; }
+    if (launchInFlight.current) return;
+    launchInFlight.current = true;
+    setLaunching(true); setSetupError('');
+    let openingRoom = false;
+    try {
+      const response = await apiClient.post<ApiResult<InterviewSession>>('interview/session', {
+        role: selectedRole === 'Custom Role' ? customRole : selectedRole,
+        interviewType, durationPreset, resumeId: selectedResumeId,
+        jobDescriptionText: [jobDescriptionText, ...uploadedFiles.filter(file => file.status === 'success').map(file => file.text || '')].filter(Boolean).join('\n\n'), companyName, experienceLevel,
+        totalExperienceYears: experienceLevel === 'fresher' ? 0 : Number(totalExperienceYears),
+        employmentHistory: experienceLevel === 'fresher' ? [] : employmentHistory.map(e => ({ companyName: e.companyName, position: e.position, durationYears: Number(e.durationYears) })),
+        consent: { storeTranscript, recordAudio, recordVideo, analyzeVideo },
+      });
+      openingRoom = openRoom(response.data.data.id);
+    } catch (e) {
+      const payload: unknown = axios.isAxiosError(e) && e.response?.status === 409 ? e.response.data : null;
+      if (payload && typeof payload === 'object' && 'error' in payload && payload.error === 'ACTIVE_SESSION_EXISTS') {
+        const saved = 'data' in payload ? payload.data : null;
+        if (saved && typeof saved === 'object' && 'id' in saved && typeof saved.id === 'string' && /^[a-f0-9]{24}$/i.test(saved.id)) {
+          openingRoom = openRoom(saved.id);
+        } else setSetupError('An unfinished interview already exists, but its room could not open. Reload this page to resume it.');
+      } else setSetupError(errorMessage(e));
+    } finally {
+      // Successful navigation owns the busy state until this setup page unmounts.
+      if (!openingRoom) { launchInFlight.current = false; setLaunching(false); }
     }
-    router.push(`/mock-interview/report/${reportId}`);
   };
 
   // Handle file uploads for Job Description
@@ -283,7 +289,7 @@ export default function MockInterviewPage() {
         continue;
       }
 
-      const fileObj = { name: file.name, size: file.size, status: 'uploading' as const };
+      const fileObj = { id: crypto.randomUUID(), name: file.name, size: file.size, status: 'uploading' as const };
       setUploadedFiles(prev => [...prev, fileObj]);
 
       const formData = new FormData();
@@ -296,16 +302,15 @@ export default function MockInterviewPage() {
 
         if (response.data.success) {
           setUploadedFiles(prev => 
-            prev.map(f => f.name === file.name ? { ...f, status: 'success' } : f)
+            prev.map(f => f.id === fileObj.id ? { ...f, status: 'success', text: response.data.text } : f)
           );
-          setJobDescriptionText(prev => (prev ? prev + "\n\n" + response.data.text : response.data.text));
         } else {
           throw new Error(response.data.error || "Failed to parse file");
         }
       } catch (err: any) {
         console.error(err);
         setUploadedFiles(prev => 
-          prev.map(f => f.name === file.name ? { ...f, status: 'error', error: err.message || "Failed to parse text" } : f)
+          prev.map(f => f.id === fileObj.id ? { ...f, status: 'error', error: err.message || "Failed to parse text" } : f)
         );
       }
     }
@@ -348,10 +353,6 @@ export default function MockInterviewPage() {
 
   const removeUploadedFile = (indexToRemove: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== indexToRemove));
-    // Reset/re-clear job description context when files are deleted
-    if (uploadedFiles.length <= 1) {
-      setJobDescriptionText('');
-    }
   };
 
   if (isLoading || (!isLoading && !user)) {
@@ -362,188 +363,20 @@ export default function MockInterviewPage() {
     );
   }
 
-  // Active Interview Session Overlay
-  if (isInterviewing) {
-    const roleToUse = selectedRole === 'Custom Role' ? (customRole || 'Software Engineer') : selectedRole;
-    return (
-      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
-        <InterviewRoom
-          role={roleToUse}
-          interviewType={interviewType}
-          resumeId={selectedResumeId}
-          jobDescriptionText={jobDescriptionText}
-          companyName={companyName}
-          companyResearch={researchBrief}
-          preCreatedStream={userStream}
-          recordingConsent={recordingConsent === true}
-          experienceLevel={experienceLevel}
-          totalExperienceYears={experienceLevel === 'fresher' ? 0 : Number(totalExperienceYears)}
-          employmentHistory={experienceLevel === 'fresher' ? [] : employmentHistory.map(e => ({ companyName: e.companyName, position: e.position, durationYears: Number(e.durationYears) }))}
-          onFinish={handleFinishInterview}
-          onCancel={() => {
-            if (userStream) {
-              userStream.getTracks().forEach(track => track.stop());
-              setUserStream(null);
-            }
-            setIsInterviewing(false);
-            setShowPermissionScreen(false);
-          }}
-        />
-      </div>
-    );
-  }
-
-  // Permission Setup Screen Overlay
   if (showPermissionScreen) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10 flex items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="glass max-w-xl w-full rounded-3xl p-6 sm:p-10 border border-slate-200 dark:border-slate-800 shadow-2xl bg-white/60 dark:bg-slate-900/60 space-y-6"
-        >
-          <div className="text-center space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-primary-500 bg-primary-500/10 px-3 py-1 rounded-full border border-primary-500/20">
-              Setup & Permissions
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-heading">
-              Before We Begin
-            </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
-              Please allow camera and microphone access to simulate a realistic interview experience.
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            {/* Microphone row */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50">
-              <div className="space-y-0.5">
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Microphone Access</span>
-                <p className="text-xs text-slate-400">Required to speak and record responses</p>
-              </div>
-              <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                micPermission === 'granted' 
-                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                  : micPermission === 'denied'
-                  ? 'bg-red-500/10 text-red-500 border border-red-500/20'
-                  : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
-              }`}>
-                {micPermission === 'granted' ? 'Granted' : micPermission === 'denied' ? 'Denied' : 'Checking...'}
-              </span>
-            </div>
-
-            {/* Camera row */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50">
-              <div className="space-y-0.5">
-                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Camera Access (Optional)</span>
-                <p className="text-xs text-slate-400">Used for candidate floating live preview screen</p>
-              </div>
-              <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                cameraPermission === 'granted' 
-                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                  : cameraPermission === 'denied'
-                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                  : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
-              }`}>
-                {cameraPermission === 'granted' ? 'Granted' : cameraPermission === 'denied' ? 'Denied' : 'Checking...'}
-              </span>
-            </div>
-
-            {/* Video preview or error explanation */}
-            {cameraPermission === 'granted' ? (
-              <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 aspect-video w-full bg-slate-950 shadow-inner">
-                <video 
-                  ref={permissionVideoRef} 
-                  autoPlay 
-                  playsInline 
-                  muted 
-                  className="w-full h-full object-cover scale-x-[-1]" 
-                />
-                <span className="absolute bottom-3 left-3 bg-slate-900/80 text-[10px] text-white font-bold px-2 py-0.5 rounded backdrop-blur">
-                  Live Preview
-                </span>
-              </div>
-            ) : cameraPermission === 'denied' ? (
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex gap-2 text-amber-600 dark:text-amber-400">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <p className="text-xs leading-relaxed">
-                  Camera permission is denied. You can still proceed with the interview using only audio/voice responses.
-                </p>
-              </div>
-            ) : null}
-
-            {micPermission === 'denied' && (
-              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex gap-2 text-red-500">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <p className="text-xs leading-relaxed">
-                  Microphone access is required to capture your answers. Please allow mic permissions in your browser.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Recording Consent */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="space-y-1">
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Would you like to record this interview?</span>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                If you choose to record, your interview video will be securely stored with your Mock Interview record and may be used to review your interview performance and interview-integrity events.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={() => setRecordingConsent(true)}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold border transition-all ${
-                  recordingConsent === true 
-                  ? 'bg-primary-500 text-white border-primary-500 shadow-md' 
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-primary-400'
-                }`}
-              >
-                Record Interview
-              </button>
-              <button
-                onClick={() => setRecordingConsent(false)}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold border transition-all ${
-                  recordingConsent === false 
-                  ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-700 dark:border-slate-600 shadow-md' 
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-400'
-                }`}
-              >
-                Continue Without Recording
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                if (userStream) {
-                  userStream.getTracks().forEach(track => track.stop());
-                  setUserStream(null);
-                }
-                setShowPermissionScreen(false);
-              }}
-            >
-              Cancel
-            </Button>
-            
-            {(micPermission === 'denied' || cameraPermission === 'denied') && (
-              <Button variant="outline" onClick={requestPermissions}>
-                Try Again
-              </Button>
-            )}
-
-            <Button 
-              disabled={micPermission !== 'granted' || recordingConsent === null}
-              onClick={() => setIsInterviewing(true)}
-            >
-              Start Interview
-            </Button>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <div className="mx-auto max-w-2xl p-6 sm:p-10 space-y-6">
+      <h1 className="text-3xl font-bold">Before your interview</h1>
+      <p>You can type every answer. Microphone and camera access are optional and start only when you choose them inside the interview.</p>
+      <p className="text-sm text-slate-500">Submitted answers and selected resume context are stored in your account and sent to {aiProviderName} for questions and feedback. Microphone answers can be transcribed by Gemini or your browser's speech provider. The app keeps only submitted transcript text; dictation audio is temporary and separate from optional recordings. AI feedback is for practice and can be inaccurate.</p>
+      {aiProviderName === 'Gemini' && <p className="text-sm text-slate-500">If this Gemini project uses Google's free tier, Google may use submitted content to improve its products. <a className="underline" href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer">Read Google's data-use terms</a>.</p>}
+      <label className="flex items-start gap-3"><input type="checkbox" checked={storeTranscript} onChange={e => setStoreTranscript(e.target.checked)} className="mt-1" />Save my answers and use AI to generate interview feedback. Required to continue.</label>
+      <label className="flex items-start gap-3"><input type="checkbox" checked={recordAudio} onChange={e => { setRecordAudio(e.target.checked); if (!e.target.checked) { setRecordVideo(false); setAnalyzeVideo(false); } }} className="mt-1" />Allow optional recording of my audio responses.</label>
+      <label className="flex items-start gap-3"><input type="checkbox" checked={recordVideo} disabled={!recordAudio} onChange={e => { setRecordVideo(e.target.checked); if (!e.target.checked) setAnalyzeVideo(false); }} className="mt-1" />Include my camera in the recording.</label>
+      <label className="flex items-start gap-3"><input type="checkbox" checked={analyzeVideo} disabled={!recordVideo} onChange={e => setAnalyzeVideo(e.target.checked)} className="mt-1" />Allow optional face-presence review of my video. This never changes my score.</label>
+      <p className="text-sm text-slate-500">Optional recordings capture your microphone and camera; generated interviewer audio is not directly included. You can delete the interview and its recordings from the report.</p>
+      {setupError && <p role="alert" className="text-red-600">{setupError}</p>}
+      <div className="flex gap-3"><Button variant="outline" onClick={() => setShowPermissionScreen(false)} disabled={launching}>Back</Button><Button onClick={launchSession} disabled={launching || (!activeSession && !storeTranscript)}>{launching ? 'Opening interview...' : activeSession ? savedSessionAction : 'Start Interview'}</Button></div>
+    </div>;
   }
 
   // Intermediate screen for Company Research Brief
@@ -580,7 +413,7 @@ export default function MockInterviewPage() {
               </div>
               <div className="flex gap-4 justify-end">
                 <Button variant="outline" onClick={() => setShowBriefScreen(false)}>Cancel</Button>
-                <Button onClick={handleStartInterview}>Continue to Interview</Button>
+                <Button onClick={handleStartInterview} disabled={launching}>{launching ? 'Opening interview...' : activeSession ? savedSessionAction : 'Continue to Interview'}</Button>
               </div>
             </div>
           ) : researchBrief ? (
@@ -611,7 +444,7 @@ export default function MockInterviewPage() {
                   </div>
 
                   <div>
-                    <h4 className="text-xs font-bold text-slate-400 uppercase">Recent Strategic Direction</h4>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase">Strategy in available sources</h4>
                     <p className="mt-1.5 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                       {researchBrief.recentStrategy}
                     </p>
@@ -619,6 +452,11 @@ export default function MockInterviewPage() {
                 </div>
               </div>
 
+              <div className="text-xs text-slate-500 space-y-2">
+                <p>This AI brief summarizes retrieved public sources. Background articles may omit recent changes. Review the source dates before using it for interview preparation.</p>
+                {researchBrief.sources?.filter(source => source.startsWith('https://')).map(source => <a key={source} href={source} target="_blank" rel="noopener noreferrer" className="block underline break-all">{source}</a>)}
+                {researchBrief.retrievedAt && <p>Retrieved {new Date(researchBrief.retrievedAt).toLocaleString()}</p>}
+              </div>
               {/* Interview Focus Areas */}
               <div className="p-5 rounded-2xl bg-primary-500/5 border border-primary-500/10 space-y-2">
                 <h4 className="text-xs font-bold text-primary-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -637,8 +475,8 @@ export default function MockInterviewPage() {
 
               <div className="flex gap-4 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
                 <Button variant="outline" onClick={() => setShowBriefScreen(false)}>Cancel</Button>
-                <Button onClick={handleStartInterview}>
-                  Continue to Interview
+                <Button onClick={handleStartInterview} disabled={launching}>
+                  {launching ? 'Opening interview...' : activeSession ? savedSessionAction : 'Continue to Interview'}
                 </Button>
               </div>
             </div>
@@ -648,32 +486,26 @@ export default function MockInterviewPage() {
     );
   }
 
-  // Active Interview Session Overlay
-  if (isInterviewing) {
-    const roleToUse = selectedRole === 'Custom Role' ? (customRole || 'Software Engineer') : selectedRole;
-    return (
-      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
-        <InterviewRoom
-          role={roleToUse}
-          interviewType={interviewType}
-          jobDescriptionText={jobDescriptionText}
-          companyName={companyName}
-          companyResearch={researchBrief}
-          resumeId={selectedResumeId}
-          experienceLevel={experienceLevel}
-          totalExperienceYears={experienceLevel === 'fresher' ? 0 : Number(totalExperienceYears)}
-          employmentHistory={experienceLevel === 'fresher' ? [] : employmentHistory.map(e => ({ companyName: e.companyName, position: e.position, durationYears: Number(e.durationYears) }))}
-          onFinish={handleFinishInterview}
-          onCancel={() => setIsInterviewing(false)}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         
+        {setupError && <p role="alert" className="mb-4 text-red-600">{setupError}</p>}
+        {activeSession && <div className="mb-6 rounded-2xl border border-primary-300 p-5 flex flex-wrap items-center gap-4">
+          <div className="flex-1"><h2 className="font-bold">You have an unfinished interview</h2><p>{activeSession.setup.role} ? {activeSession.turns.length} answers saved</p></div>
+          <Link className={`font-semibold text-primary-600 underline ${launching ? 'pointer-events-none opacity-50' : ''}`} prefetch={false} href={`/interview/${activeSession.id}`} aria-disabled={launching} tabIndex={launching ? -1 : 0} onClick={event => { event.preventDefault(); resumeSession(); }}>{launching ? 'Opening interview...' : savedSessionAction}</Link>
+          <button className="text-sm underline disabled:opacity-50" disabled={launching} onClick={async () => {
+            if (!window.confirm('Discard this unfinished interview? Submitted answers will not be evaluated.')) return;
+            try {
+              let localCleanupFailed = false;
+              await deleteLocalSession(activeSession.id).catch(() => { localCleanupFailed = true; });
+              await apiClient.post(`interview/session/${activeSession.id}/abandon`);
+              if (localCleanupFailed) window.alert('Interview discarded from your account. Clear this site\'s browser storage to remove drafts from this device.');
+              setActiveSession(null);
+            } catch (e) { setSetupError(errorMessage(e)); }
+          }}>Discard</button>
+        </div>}
         {/* Header */}
         <div className="mb-10 text-center lg:text-left">
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white font-heading">
@@ -758,6 +590,39 @@ export default function MockInterviewPage() {
                         }`}
                       >
                         {typeOption}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Interview Length */}
+                <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    How long do you have?
+                  </label>
+                  <p className="text-xs text-slate-400 mb-3">
+                    The interviewer will follow up on your answers, so the exact number of
+                    questions varies — just like a real interview.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {DURATION_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setDurationPreset(opt.id)}
+                        className={`p-4 rounded-xl border text-left transition-all ${
+                          durationPreset === opt.id
+                            ? 'bg-primary-500 text-white border-primary-500 shadow-md shadow-primary-500/20'
+                            : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">{opt.label}</div>
+                        <div className={`text-xs mt-0.5 ${durationPreset === opt.id ? 'text-white/80' : 'text-slate-400'}`}>
+                          {opt.time}
+                        </div>
+                        <div className={`text-[11px] mt-1.5 ${durationPreset === opt.id ? 'text-white/70' : 'text-slate-400'}`}>
+                          {opt.detail}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -863,7 +728,7 @@ export default function MockInterviewPage() {
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Uploaded Documents</span>
                         <div className="max-h-28 overflow-y-auto space-y-1.5 pr-1">
                           {uploadedFiles.map((file, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 text-xs">
+                            <div key={file.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/50 text-xs">
                               <div className="flex items-center gap-2 truncate pr-2">
                                 <FileText className="w-3.5 h-3.5 text-primary-500 shrink-0" />
                                 <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{file.name}</span>
@@ -873,6 +738,7 @@ export default function MockInterviewPage() {
                                 {file.status === 'uploading' && <Loader2 className="w-3 h-3 text-primary-500 animate-spin" />}
                                 {file.status === 'error' && <span className="text-[9px] text-red-500 font-bold" title={file.error}>Failed</span>}
                                 <button 
+                                  aria-label={`Remove ${file.name}`}
                                   onClick={() => removeUploadedFile(idx)}
                                   className="text-slate-400 hover:text-red-500 transition-colors p-0.5 rounded-full hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
                                 >
@@ -1048,11 +914,11 @@ export default function MockInterviewPage() {
                 <div className="pt-4 flex gap-4">
                   <Button
                     onClick={handleStartProcess}
-                    disabled={selectedRole === 'Custom Role' && !customRole.trim()}
+                    disabled={launching || (!activeSession && selectedRole === 'Custom Role' && !customRole.trim())}
                     className="w-full sm:w-auto h-12 px-8 rounded-xl shadow-lg shadow-primary-500/20"
                   >
                     <Play className="w-4 h-4 mr-2 fill-white" />
-                    Start Interview
+                    {launching ? 'Opening interview...' : activeSession ? savedSessionAction : 'Start Interview'}
                   </Button>
                 </div>
               </div>

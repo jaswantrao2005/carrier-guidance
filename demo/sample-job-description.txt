@@ -1,0 +1,35 @@
+FICTIONAL JOB DESCRIPTION - FOR TEAM DEMONSTRATIONS ONLY
+
+Role: Junior Backend Developer
+Company: Fictional Learning Labs
+Location: Pune / hybrid
+Experience: 0-2 years
+
+About the role
+Help a small engineering team build and maintain a task-management application.
+This sample is fictional and is not a real vacancy or company advertisement.
+
+Responsibilities
+- Build and maintain REST APIs using Node.js and Express.
+- Validate input and implement authentication and resource ownership checks.
+- Model application data in MongoDB and write efficient queries.
+- Write integration tests and review changes using Git and GitHub Actions.
+- Explain implementation choices and troubleshoot errors with teammates.
+
+Required skills
+- JavaScript fundamentals and asynchronous programming.
+- Basic knowledge of TypeScript, HTTP, REST, Express, and JWT authentication.
+- MongoDB collections, indexes, and query basics.
+- Familiarity with Git, automated tests, and clear technical documentation.
+
+Skills to develop in the role
+- PostgreSQL joins and relational data modeling.
+- Redis caching and cache invalidation basics.
+- Docker deployment, structured logs, and service monitoring.
+- Safe handling of file uploads and private user data.
+
+Interview focus
+Discuss one backend project, explain API authentication and validation, describe
+how a database index changes query behavior, and work through a short coding
+problem using standard input and output. Be clear about what you implemented
+yourself and which skills you are still learning.

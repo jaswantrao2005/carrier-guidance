@@ -80,7 +80,7 @@ const getUserResumeHistory = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?.userId;
 
-    const resumes = await Resume.find({ user: userId }).sort({ createdAt: -1 });
+    const resumes = await Resume.find({ user: userId }).select('-resumeText -path').sort({ createdAt: -1 }).limit(100);
 
     res.status(200).json({
       success: true,
@@ -116,7 +116,7 @@ const getResumeById = async (req, res, next) => {
 const deleteResume = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?.userId;
-    const resume = await Resume.findOneAndDelete({ _id: req.params.id, user: userId });
+    const resume = await Resume.findOne({ _id: req.params.id, user: userId });
 
     if (!resume) {
       return res.status(404).json({
@@ -125,9 +125,13 @@ const deleteResume = async (req, res, next) => {
       });
     }
 
-    if (resume.path && fs.existsSync(resume.path)) {
-      fs.unlinkSync(resume.path);
+    if (resume.path) {
+      if (!await require('../../config/storage').isManagedFile(resume.path)) {
+        throw Object.assign(new Error('Resume file path is outside managed storage. Contact the operator.'), { statusCode: 409 });
+      }
+      await fs.promises.unlink(resume.path).catch(error => { if (error.code !== 'ENOENT') throw error; });
     }
+    await Resume.deleteOne({ _id: resume._id, user: userId });
 
     res.status(200).json({
       success: true,

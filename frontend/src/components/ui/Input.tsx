@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useId } from 'react';
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -6,16 +6,21 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className = '', label, error, ...props }, ref) => {
+  ({ className = '', label, error, id, ...props }, ref) => {
+    const generatedId = useId();
+    const inputId = id || generatedId;
     return (
       <div className="w-full flex flex-col gap-1.5">
         {label && (
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          <label htmlFor={inputId} className="text-sm font-medium text-slate-700 dark:text-slate-300">
             {label}
           </label>
         )}
         <input
           ref={ref}
+          id={inputId}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${inputId}-error` : undefined}
           className={`
             w-full px-4 py-2.5 rounded-lg border bg-white dark:bg-slate-900/50
             text-slate-900 dark:text-slate-100 placeholder:text-slate-400
@@ -26,7 +31,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           `}
           {...props}
         />
-        {error && <span className="text-sm text-red-500">{error}</span>}
+        {error && <span id={`${inputId}-error`} className="text-sm text-red-500">{error}</span>}
       </div>
     );
   }

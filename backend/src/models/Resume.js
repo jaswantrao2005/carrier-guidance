@@ -41,6 +41,9 @@ const resumeSchema = new mongoose.Schema(
   }
 );
 
+// Supports GET /resume/history: find({user}).sort({createdAt:-1})
+resumeSchema.index({ user: 1, createdAt: -1 });
+
 const Resume = mongoose.model('Resume', resumeSchema);
 
 module.exports = Resume;
