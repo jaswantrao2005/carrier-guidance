@@ -12,7 +12,7 @@ export const Navbar = () => {
   const { user, logout, isLoading } = useAuth();
   const pathname = usePathname();
 
-  const isAuthPage = pathname === '/login' || pathname === '/register';
+  const isAuthPage = pathname === '/login' || pathname === '/register' || pathname === '/';
 
   if (isAuthPage) return null;
 
